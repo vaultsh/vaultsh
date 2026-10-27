@@ -56,7 +56,13 @@ def _copy_encrypted_file(source: Path, destination: Path, *, overwrite: bool) ->
             # Re-check to avoid replacing a file if overwrite was not authorized.
             if destination.exists() and not overwrite:
                 raise FileExistsError(destination)
-            os.replace(temporary, destination)
+            if overwrite:
+                os.replace(temporary, destination)
+            else:
+                # Atomic no-clobber operation; unlike exists()+replace(), this
+                # also protects against a destination appearing during the copy.
+                os.link(temporary, destination)
+                temporary.unlink()
             if os.name != "nt":
                 os.chmod(destination, 0o600)
             return destination

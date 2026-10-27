@@ -41,3 +41,24 @@ def test_backup_does_not_overwrite_by_default(tmp_path: Path) -> None:
     with pytest.raises(VaultError, match="Unable to copy"):
         create_backup(source, backup)
     assert backup.read_bytes() == b"existing"
+
+
+def test_write_vault_does_not_overwrite_by_default(tmp_path: Path) -> None:
+    target = tmp_path / "protected.vault"
+    write_vault(target, b"original payload", "original-test-passphrase")
+    before = target.read_bytes()
+
+    with pytest.raises(VaultError, match="Unable to write vault file"):
+        write_vault(target, b"replacement payload", "replacement-test-passphrase")
+
+    assert target.read_bytes() == before
+    assert read_vault(target, "original-test-passphrase") == b"original payload"
+
+
+def test_write_vault_requires_explicit_overwrite(tmp_path: Path) -> None:
+    target = tmp_path / "replace.vault"
+    write_vault(target, b"first", "first-test-passphrase")
+    write_vault(target, b"second", "second-test-passphrase", overwrite=True)
+    assert read_vault(target, "second-test-passphrase") == b"second"
+    with pytest.raises(VaultError):
+        read_vault(target, "first-test-passphrase")
