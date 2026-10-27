@@ -24,7 +24,7 @@ The long-term goal is to provide a modular, multi-chain wallet for **Windows 10/
 Vaultsh is intended to keep the user in control: no mandatory account, no advertising, no telemetry by default, and no centralized custody of wallet keys.
 
 > [!WARNING]
-> **Vaultsh is currently in pre-alpha.** The repository scaffold is not a functioning cryptocurrency wallet. Key generation, recovery, balance retrieval, transaction signing, and transaction broadcasting are not implemented in the initial scaffold. Do not use it to store or transact real funds.
+> **Vaultsh is currently in pre-alpha.** The repository is not a functioning cryptocurrency wallet. A few low-level helpers for authenticated encryption and local file handling exist, but they have not received an independent security audit and are not a complete wallet vault. Wallet/seed generation and recovery, blockchain-specific key derivation, balance retrieval, transaction signing, and transaction broadcasting are not implemented. Do not use it to store or transact real funds.
 
 ## Project goals
 
@@ -123,7 +123,7 @@ vaultsh/
     └── test_config.py
 ```
 
-Some modules are placeholders and will be implemented as the project evolves.
+Some modules provide limited foundational helpers, while chain adapters and complete wallet workflows remain unimplemented.
 
 ### Component responsibilities
 
