@@ -2,9 +2,26 @@
 
 All notable changes to Vaultsh are recorded here. Vaultsh is pre-alpha; a version number does not imply production readiness, an audit, or a stable compatibility promise. Dates use `YYYY-MM-DD`.
 
+**🌐 Changelog translations:** [English](CHANGELOG.md) · [Polski](docs/pl/CHANGELOG.md) · [Русский](docs/ru/CHANGELOG.md)
+
 ## 🚧 [Unreleased]
 
-No unreleased changes yet.
+### ✨ Added
+
+- Added Polish and Russian README files and translated documentation sets, with language links at the top of each README and indexes for both languages.
+- Added `--lang en|pl|ru` for the start dashboard and top-level informational screens.
+- Added clearer grouped command dashboard, first-run quick-start steps, explicit pre-alpha warning, network-permission reminder, and contextual help hints.
+- Added regression tests for localized dashboard, network overview, informational screens, and invalid language handling.
+
+### 🔄 Changed
+
+- Improved terminal layout with shorter command rows, consistent panel spacing, wider tables, and grouped local-vault/wallet/network/help sections.
+- Updated the recorded local test result to 144 passed, 4 skipped, and 82% measured line coverage.
+
+### 🛡️ Notes
+
+- Runtime localization currently covers the dashboard and major informational screens. Detailed subcommand help, some prompts, and low-level errors remain English.
+- These changes do not bump the application version; the latest tagged/versioned baseline remains 0.6.0 until a release is explicitly cut.
 
 ## 🚀 [0.6.0] - 2026-10-27
 

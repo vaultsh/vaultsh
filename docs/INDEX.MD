@@ -1,3 +1,5 @@
+**🌐 Documentation:** [English](INDEX.md) · [Polski](pl/INDEX.md) · [Русский](ru/INDEX.md)
+
 # Vaultsh documentation index
 
 This documentation describes **Vaultsh 0.6.0**. Vaultsh is a pre-alpha Python terminal application, not an audited wallet for real funds.

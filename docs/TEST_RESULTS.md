@@ -1,4 +1,4 @@
-# Test results — Vaultsh 0.6.0
+# Test results — Vaultsh 0.6.0 (current working tree)
 
 This report records the actual local test run completed on **2026-10-27**. These results are not a security certification and do not replace platform CI or independent review.
 
@@ -13,18 +13,19 @@ This report records the actual local test run completed on **2026-10-27**. These
 
 ## Result
 
-**139 passed, 4 skipped. Measured line coverage: 81%.**
+**144 passed, 4 skipped. Measured line coverage: 82%.**
 
 | Measure | Result |
 |---|---:|
-| Tests passed | 139 |
+| Tests passed | 144 |
 | Tests skipped | 4 |
-| Total statements measured | 1,361 |
-| Statements covered | 1,103 |
-| Statements missed | 258 |
-| Aggregate line coverage | 81% |
+| Total statements measured | 1,400 |
+| Statements covered | 1,141 |
+| Statements missed | 259 |
+| Aggregate line coverage | 82% |
 
-The expanded test suite includes parameterized checks for all five supported EVM profile IDs/assets, an EVM CLI test selecting Polygon, and existing Bitcoin balance/history, vault, encryption, config, CLI, and privacy-policy tests. The CLI and network tests use synthetic responses; they do not contact public RPC providers.
+Five UI-language regression tests cover the Polish dashboard and network overview, Russian `about` and privacy screens, and invalid language handling. The expanded test suite includes parameterized checks for all five supported EVM profile IDs/assets, an EVM CLI test selecting Polygon, and existing Bitcoin balance/history, vault, encryption, config, CLI, and privacy-policy tests. The CLI and network tests use synthetic responses; they do not contact public RPC providers.
+
 
 ## Why tests were skipped
 

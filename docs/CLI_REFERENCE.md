@@ -2,6 +2,10 @@
 
 This reference describes the commands in Vaultsh **0.6.0**. Use `vaultsh --help` or `vaultsh COMMAND --help` for the installed build's generated help text.
 
+## Interface language
+
+Use `vaultsh --lang pl` or `vaultsh --lang ru about`. Supported values are `en`, `pl`, and `ru`; put `--lang` before the subcommand. The start dashboard and major informational screens (`about`, `networks`, `privacy`, and the configuration overview title) are localized. Detailed subcommand help, operation prompts, and some low-level error messages remain English in this release.
+
 ## General commands
 
 ### `vaultsh`

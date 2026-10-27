@@ -1,5 +1,7 @@
 # Security policy
 
+**🌐 Documentation:** [English](SECURITY.md) · [Polski](docs/pl/SECURITY.md) · [Русский](docs/ru/SECURITY.md)
+
 Vaultsh is a **pre-alpha, unaudited project**. Do not use it to store or transact real funds.
 
 ## Reporting a vulnerability

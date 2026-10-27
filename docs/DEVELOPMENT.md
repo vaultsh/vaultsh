@@ -28,7 +28,7 @@ The runtime dependencies include Typer, Rich, cryptography, `embit`, `eth-utils`
 ```bash
 pytest -q
 pytest --cov=vaultsh --cov-report=term-missing
-
+```
 
 Tests use fake HTTP openers and synthetic JSON-RPC/Esplora responses. They do not need a running node and should not access live endpoints. Bitcoin derivation tests require `embit`; EVM mixed-case EIP-55 checksum tests require `eth-utils` with a Keccak backend. Install project dependencies before expecting those tests to run instead of skip.
 

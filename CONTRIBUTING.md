@@ -1,5 +1,7 @@
 # Contributing to Vaultsh
 
+**🌐 Documentation:** [English](CONTRIBUTING.md) · [Polski](docs/pl/CONTRIBUTING.md) · [Русский](docs/ru/CONTRIBUTING.md)
+
 Vaultsh is a pre-alpha security-sensitive project. Contributions should be small, reviewable, tested with synthetic data, and documented accurately. Do not claim a feature is implemented if it is only scaffolded or mocked.
 
 ## Development checks

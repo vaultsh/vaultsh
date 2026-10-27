@@ -40,6 +40,8 @@ from vaultsh.storage.vault_document import (
     read_vault_document,
 )
 from vaultsh.storage.wallet_store import add_bitcoin_wallet, get_recovery_phrase, list_wallets
+from vaultsh.ui.i18n import set_language, tr
+from vaultsh.ui.screens import render_dashboard
 
 app = typer.Typer(
     name="vaultsh",
@@ -82,40 +84,26 @@ console = Console()
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
-    """Show a landing screen when no command is supplied."""
+def main(
+    ctx: typer.Context,
+    lang: str = typer.Option(
+        "en",
+        "--lang",
+        "-L",
+        help="Interface language: en (English), pl (Polski), ru (Русский). Place before the command.",
+        show_default=True,
+        case_sensitive=False,
+    ),
+) -> None:
+    """Show a readable command dashboard when no subcommand is supplied."""
+    try:
+        set_language(lang)
+    except ValueError as exc:
+        console.print(f"[red]Invalid interface language:[/] {escape(str(exc))}")
+        raise typer.Exit(code=2) from exc
     if ctx.invoked_subcommand is not None:
         return
-
-    table = Table(show_header=False, box=None, pad_edge=False)
-    table.add_row("[bold cyan]about[/]          Project status and limitations")
-    table.add_row("[bold cyan]vault init[/]     Create an encrypted empty vault")
-    table.add_row("[bold cyan]vault check[/]    Verify/decrypt a vault metadata document")
-    table.add_row("[bold cyan]vault backup[/]   Back up an encrypted vault")
-    table.add_row("[bold cyan]vault restore[/]  Restore an encrypted backup")
-    table.add_row("[bold cyan]wallet create[/]  Create a Bitcoin Mainnet wallet")
-    table.add_row("[bold cyan]wallet recover[/] Recover a wallet from a BIP-39 phrase")
-    table.add_row("[bold cyan]wallet list[/]    List public wallet details in a vault")
-    table.add_row("[bold cyan]bitcoin balance/history[/] Read-only BTC queries via explicit Esplora API")
-    table.add_row("[bold cyan]ethereum balance[/] Read-only Ethereum ETH balance via explicit JSON-RPC endpoint")
-    table.add_row("[bold cyan]evm balance[/] Read native ETH/POL on supported EVM mainnets")
-    table.add_row("[bold cyan]networks[/]       Supported and planned adapters")
-    table.add_row("[bold cyan]privacy[/]        Privacy defaults")
-    table.add_row("[bold cyan]config[/]         Default non-secret configuration")
-    console.print(
-        Panel(
-            table,
-            title=f"[bold cyan]VAULTSH[/] [dim]v{__version__}[/]",
-            subtitle="[dim]Private · Self-custodial · Terminal-native[/]",
-            border_style="cyan",
-        )
-    )
-    console.print(
-        "[yellow]PRE-ALPHA:[/] Offline Bitcoin wallet derivation plus explicitly authorized "
-        "read-only Bitcoin balance/history and selected EVM native-balance queries are available. "
-        "Transaction signing and broadcasting are not implemented; do not use this build for real funds."
-    )
-    console.print("Run [cyan]vaultsh --help[/] to see commands.")
+    render_dashboard(console, __version__)
 
 
 @app.command()
@@ -123,70 +111,59 @@ def about() -> None:
     """Display project scope and current implementation status."""
     message = "\n\n".join(
         [
-            "Vaultsh is a Python-first, privacy-focused multi-chain wallet project.",
-            "Implemented: encrypted vaults and backups, Bitcoin Mainnet BIP-39/BIP-84 wallet "
-            "creation and recovery, address-scoped Bitcoin balance/history queries through "
-            "Esplora, and read-only native asset balances on Ethereum Mainnet, Polygon PoS, "
-            "Arbitrum One, Optimism, and Base via JSON-RPC. Every remote query requires both "
-            "configuration permission and --allow-network.",
-            "Not implemented: EVM wallet key derivation/storage, ERC-20 tokens, Monero, "
-            "wallet-wide address discovery, transaction construction/signing/broadcasting, or "
-            "Tor transport. Read-only queries disclose addresses and connection metadata to "
-            "the selected endpoint.",
-            "This pre-alpha build is not suitable for real funds.",
+            tr("about.summary"),
+            tr("about.implemented"),
+            tr("about.missing"),
+            tr("about.warning"),
         ]
     )
-    console.print(Panel(message, title="About Vaultsh", border_style="cyan"))
+    console.print(Panel(message, title=tr("about.title"), border_style="cyan", padding=(1, 2)))
 
 
 @app.command()
 def networks() -> None:
     """Show implemented read-only profiles and planned network integrations."""
-    table = Table(title="Network adapter roadmap")
-    table.add_column("Network", style="cyan")
-    table.add_column("Status")
-    table.add_row("Bitcoin Mainnet", "Offline BIP-39/BIP-84; read-only Esplora balance + address history")
-    for key, profile in EVM_NETWORKS.items():
+    table = Table(title=tr("networks.title"), show_header=True, expand=True)
+    table.add_column(tr("networks.network"), style="cyan")
+    table.add_column(tr("networks.status"))
+    table.add_row("Bitcoin Mainnet", tr("networks.bitcoin"))
+    for profile in EVM_NETWORKS.values():
         table.add_row(
             profile.name,
-            f"Read-only native {profile.asset_symbol} balance (chain ID {profile.chain_id}); no wallet keys",
+            tr("networks.evm_status").format(
+                asset=profile.asset_symbol, chain_id=profile.chain_id
+            ),
         )
-    table.add_row("Monero", "Planned — not implemented")
+    table.add_row("Monero", tr("networks.monero"))
     console.print(table)
 
 
 @app.command()
 def privacy() -> None:
     """Show privacy defaults and network caveats."""
-    table = Table(title="Privacy defaults", show_header=True)
-    table.add_column("Setting", style="cyan")
-    table.add_column("Default")
+    table = Table(title=tr("privacy.title"), show_header=True, expand=True)
+    table.add_column(tr("privacy.setting"), style="cyan")
+    table.add_column(tr("privacy.default"))
     settings = AppConfig()
-    table.add_row("Telemetry", "Enabled" if settings.telemetry_enabled else "Disabled")
+    disabled = tr("privacy.disabled")
+    table.add_row(tr("privacy.telemetry"), "Enabled" if settings.telemetry_enabled else disabled)
     table.add_row(
-        "Network requests", "Enabled" if settings.network_requests_enabled else "Disabled"
+        tr("privacy.network"), "Enabled" if settings.network_requests_enabled else disabled
     )
-    table.add_row("Tor", "Disabled")
+    table.add_row(tr("privacy.tor"), disabled)
     console.print(table)
-    console.print(
-        "[yellow]Note:[/] Vaultsh does not guarantee anonymity. Wallet creation/recovery are "
-        "local/offline. The Bitcoin balance/history and EVM balance commands contact only "
-        "the endpoint explicitly supplied by the user, after both configuration and command-line "
-        "opt-in. The endpoint can associate queried addresses with connection metadata. Tor "
-        "transport is not implemented; these commands refuse direct connections when "
-        "tor_enabled is true rather than implying traffic is protected by Tor."
-    )
+    console.print(Panel(tr("privacy.note"), border_style="yellow", padding=(1, 2)))
 
 
 @app.command()
 def config() -> None:
     """Print default non-secret application configuration."""
-    _print_config(AppConfig(), title="Default configuration")
-    console.print("[dim]No secrets are read or displayed by this command.[/]")
+    _print_config(AppConfig(), title=tr("config.title"))
+    console.print(f"[dim]{tr('config.no_secrets')}[/]")
 
 
 def _print_config(settings: AppConfig, *, title: str) -> None:
-    table = Table(title=title, show_header=True)
+    table = Table(title=title, show_header=True, expand=True)
     table.add_column("Setting", style="cyan")
     table.add_column("Value")
     table.add_row("app_name", settings.app_name)

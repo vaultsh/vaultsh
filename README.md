@@ -12,6 +12,8 @@
 
 </div>
 
+**🌐 Documentation / Dokumentacja / Документация:** [English](README.md) · [Polski](README.pl.md) · [Русский](README.ru.md)
+
 ---
 
 ## Project status
@@ -49,11 +51,13 @@ A feature marked as supported is not independently audited. Read-only balances/h
 
 ### Local test result for 0.6.0
 
-The recorded local run on 2026-10-27 completed with **139 passed, 4 skipped, and 81% measured line coverage** (`pytest --cov=vaultsh --cov-report=term-missing -q`, Python 3.13.5). The four skips were dependency-gated tests because `embit` and `eth-utils` were unavailable in that environment. No live network request was made, hosted Windows/Linux CI was not observed, and these numbers are not a security certification. See [the complete test report](docs/TEST_RESULTS.md).
+The latest local run on 2026-10-27 completed with **144 passed, 4 skipped, and 82% measured line coverage** (`pytest --cov=vaultsh --cov-report=term-missing -q`, Python 3.13.5). The four skips were dependency-gated tests because `embit` and `eth-utils` were unavailable in that environment. Five UI-language regression tests were added; the detailed report covers the current source tree. No live network request was made, hosted Windows/Linux CI was not observed, and these numbers are not a security certification. See [the complete test report](docs/TEST_RESULTS.md).
 
 ## Documentation
 
-- [Documentation index](docs/INDEX.md)
+- [English documentation index](docs/INDEX.md)
+- [Polish documentation index](docs/pl/INDEX.md)
+- [Russian documentation index](docs/ru/INDEX.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [CLI reference](docs/CLI_REFERENCE.md)
 - [Configuration reference](docs/CONFIGURATION.md)
@@ -66,6 +70,10 @@ The recorded local run on 2026-10-27 completed with **139 passed, 4 skipped, and
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
+
+## Interface languages
+
+The start dashboard and top-level informational screens support English, Polish, and Russian. Pass `--lang` before the command; for example `vaultsh --lang pl` or `vaultsh --lang ru about`. Detailed command help, operation prompts, and some low-level error messages remain English in this release. The links above switch the full README and documentation set.
 
 ## Installation
 

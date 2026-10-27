@@ -280,3 +280,42 @@ def test_wallet_recovery_rejects_duplicate_address(
     )
     assert duplicate.exit_code == 1
     assert "already present" in duplicate.stdout
+
+
+def test_polish_dashboard_has_grouped_quickstart_and_language_hint() -> None:
+    result = runner.invoke(app, ["--lang", "pl"])
+    assert result.exit_code == 0
+    assert "Przegląd poleceń" in result.stdout
+    assert "Sugerowane pierwsze kroki" in result.stdout
+    assert "vault init" in result.stdout
+    assert "--allow-network" in result.stdout
+
+
+def test_russian_about_command_is_localized() -> None:
+    result = runner.invoke(app, ["--lang", "ru", "about"])
+    assert result.exit_code == 0
+    assert "О Vaultsh" in result.stdout
+    assert "Не реализовано" in result.stdout
+    assert "реальных средств" in result.stdout
+
+
+def test_invalid_interface_language_fails_clearly() -> None:
+    result = runner.invoke(app, ["--lang", "de"])
+    assert result.exit_code == 2
+    assert "Invalid interface language" in result.stdout
+
+
+def test_polish_network_overview_localizes_evm_status() -> None:
+    result = runner.invoke(app, ["--lang", "pl", "networks"])
+    assert result.exit_code == 0
+    assert "Przegląd obsługi sieci" in result.stdout
+    assert "Odczyt natywnego salda" in result.stdout
+    assert "W planach" in result.stdout
+
+
+def test_russian_privacy_screen_is_localized() -> None:
+    result = runner.invoke(app, ["--lang", "ru", "privacy"])
+    assert result.exit_code == 0
+    assert "Конфиденциальность" in result.stdout
+    assert "Телеметрия" in result.stdout
+    assert "не гарантирует анонимность" in result.stdout
