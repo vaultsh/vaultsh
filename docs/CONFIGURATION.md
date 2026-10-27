@@ -1,20 +1,17 @@
 # Configuration reference
 
-Vaultsh configuration is non-secret TOML. Network requests and telemetry are disabled by default. The Bitcoin balance command requires a user-selected endpoint, a config file that enables networking, and the explicit `--allow-network` command-line flag.
+This document describes `AppConfig` and TOML validation in Vaultsh **0.6.0**.
 
-## Generate a template
+## Create and validate a config file
 
 ```bash
 vaultsh config-init ./vaultsh.toml
+vaultsh config-check ./vaultsh.toml
 ```
 
-Use `--force` only when intentionally replacing an existing file:
+`config-init` refuses to overwrite an existing path unless `--force` is supplied. A configuration file contains preferences, not secret material.
 
-```bash
-vaultsh config-init ./vaultsh.toml --force
-```
-
-## Example file
+## Example
 
 ```toml
 [app]
@@ -25,54 +22,52 @@ tor_enabled = false
 request_timeout_seconds = 15.0
 ```
 
-Validate it with:
-
-```bash
-vaultsh config-check ./vaultsh.toml
-```
+The generated example keeps network requests disabled. Change `network_requests_enabled` to `true` only when you are ready to send a public address to a provider you selected.
 
 ## Settings
 
-| Key | Type | Default | Validation / meaning |
+| Key | Type | Default | Meaning |
 |---|---|---:|---|
-| `app_name` | string | `"vaultsh"` | Must be non-empty and have no surrounding whitespace. |
-| `telemetry_enabled` | boolean | `false` | Telemetry is disabled; there is no telemetry pipeline. |
-| `network_requests_enabled` | boolean | `false` | Required to permit the optional Bitcoin balance request. It is not sufficient on its own. |
-| `tor_enabled` | boolean | `false` | Cannot be true while `network_requests_enabled` is false. Tor transport is not implemented; the balance command refuses to connect when this setting is true. |
-| `request_timeout_seconds` | number | `15.0` | Must be between 0.1 and 300 seconds inclusive; used by the read-only Esplora client. |
+| `app_name` | string | `"vaultsh"` | Display/application identifier; must be non-empty and trimmed |
+| `telemetry_enabled` | boolean | `false` | Telemetry is disabled in this build; there is no analytics sender |
+| `network_requests_enabled` | boolean | `false` | Configuration permission for read-only Bitcoin/EVM requests |
+| `tor_enabled` | boolean | `false` | If true, network commands refuse direct connections because Tor transport is not implemented |
+| `request_timeout_seconds` | number | `15.0` | Per-request timeout, inclusive range 0.1–300 seconds |
 
-Only the `[app]` top-level table and the listed keys are accepted. Unknown sections and keys are rejected rather than ignored. Boolean fields must be TOML booleans (`true`/`false`), not quoted strings. Timeout must be numeric, not a boolean.
+Unknown top-level sections and unknown keys in `[app]` are rejected. Booleans are not accepted as numeric timeouts. `tor_enabled = true` is rejected unless network requests are enabled, but enabling both does **not** mean Tor works; current network commands still refuse to connect until Tor transport is implemented.
 
-## Explicitly enabling a balance lookup
+## Required dual opt-in
 
-The default template deliberately disables networking. To query one address, change only the network setting when you understand the privacy trade-off:
+For each remote read-only operation, both conditions must be true:
 
-```toml
-[app]
-app_name = "vaultsh"
-telemetry_enabled = false
-network_requests_enabled = true
-tor_enabled = false
-request_timeout_seconds = 15.0
-```
+1. `network_requests_enabled = true` in the TOML file passed via `--config`.
+2. `--allow-network` appears on the command line.
 
-Then supply the endpoint and explicit flag for the individual command:
+Example:
 
 ```bash
-vaultsh bitcoin balance ADDRESS --endpoint https://esplora.example/api --config ./vaultsh.toml --allow-network
+vaultsh bitcoin balance ADDRESS --endpoint https://YOUR-ESPLORA/api \
+  --config ./vaultsh.toml --allow-network
+
+vaultsh bitcoin history ADDRESS --endpoint https://YOUR-ESPLORA/api \
+  --config ./vaultsh.toml --allow-network --limit 10
+
+vaultsh ethereum balance 0xYOUR_ADDRESS --endpoint https://YOUR-ETH-RPC \
+  --config ./vaultsh.toml --allow-network
+
+vaultsh evm balance 0xYOUR_ADDRESS --chain polygon \
+  --endpoint https://YOUR-POLYGON-RPC --config ./vaultsh.toml --allow-network
 ```
 
-Replace the placeholder endpoint with a compatible endpoint you trust. The command sends the address and connection metadata to that endpoint. Vaultsh does not pick a default provider, follow redirects, honor ambient HTTP proxy environment variables, or route traffic through Tor. HTTPS is required for remote hosts; HTTP is accepted only for localhost/loopback.
+There is no default public endpoint. The Bitcoin client expects an Esplora-compatible REST endpoint. The EVM client expects a JSON-RPC 2.0 endpoint and refuses a response whose `eth_chainId` does not match the chosen profile (`ethereum`, `polygon`, `arbitrum`, `optimism`, or `base`).
 
-## Important behavior
+## Endpoint and privacy rules
 
-- `vaultsh config` displays default in-memory settings. It does not load an arbitrary file.
-- `vaultsh config-check PATH` loads and validates the file passed on the command line.
-- There is no global `--config` option; only commands that document `--config` consume a config file.
-- `network_requests_enabled = true` does not itself authorize a request. The balance command also requires `--allow-network`.
-- If `tor_enabled = true`, the balance command refuses to connect because no Tor transport is implemented. It does not silently fall back to a direct request.
-- The endpoint is supplied per command and is not stored in a config file.
+- Remote endpoints must use HTTPS. Plain HTTP is allowed only for localhost/loopback IP addresses, primarily for a self-hosted local node.
+- Credentials embedded in URLs, query strings, fragments, control characters, and path dot-segments are rejected.
+- Redirects are not followed and environment proxy variables are ignored.
+- Endpoint choice is not stored in `AppConfig`; it is passed explicitly on each command.
+- The selected endpoint receives the queried public address and connection metadata. Tor is not supported; the client does not automatically route through a proxy.
+- Some RPC providers put tokens into URL paths. Treat such values as secrets; avoid them if possible and do not paste them into issue trackers or screenshots. EVM CLI output displays the host only.
 
-## Secrets are not configuration
-
-Do not store the vault password, recovery phrase, private keys, API tokens, node credentials, or derived encryption keys in TOML. Use hidden interactive prompts for secrets. Keep vault files and backups out of version control and review `.gitignore` and `git status` before committing.
+Do not put passwords, recovery phrases, private keys, seeds, vault contents, or API credentials in TOML files committed to source control.

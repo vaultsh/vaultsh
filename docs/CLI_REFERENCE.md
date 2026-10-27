@@ -1,155 +1,123 @@
 # CLI reference
 
-The examples below describe Vaultsh **0.4.5**. Commands that open a vault prompt for passwords without echoing them. Commands that make network requests need both an explicit CLI opt-in and permission in the supplied configuration.
+This reference describes the commands in Vaultsh **0.6.0**. Use `vaultsh --help` or `vaultsh COMMAND --help` for the installed build's generated help text.
 
-## Global commands
+## General commands
 
-| Command | Purpose |
-|---|---|
-| `vaultsh` | Show the landing screen and pre-alpha warning. |
-| `vaultsh --help` | Show top-level help. |
-| `vaultsh about` | Display project scope and implementation status. |
-| `vaultsh networks` | Show implemented and planned network functionality. |
-| `vaultsh privacy` | Display privacy defaults and current network limitations. |
-| `vaultsh config` | Display default, non-secret settings. It does not load a config file. |
-| `vaultsh version` | Print the installed version. |
-| `vaultsh config-init PATH [--force]` | Create a non-secret TOML template. `--force` permits replacing a file. |
-| `vaultsh config-check PATH` | Parse and validate a TOML config, then print recognized non-secret values. |
+### `vaultsh`
 
-Use `vaultsh <command> --help` for the installed command's option list.
+Shows a landing screen and the pre-alpha warning.
 
-## Vault commands
+### `vaultsh version`
 
-### `vaultsh vault init PATH [--label LABEL]`
+Prints the installed version.
 
-Creates an encrypted metadata vault. Password entry and confirmation are hidden. New vault passwords must be at least 12 characters; this is a minimum length, not a measure of entropy. An existing destination is not overwritten.
+### `vaultsh about`
 
-```bash
-vaultsh vault init ./main.vault --label "Main vault"
-```
+Describes implemented capabilities and major gaps.
 
-### `vaultsh vault check PATH`
+### `vaultsh networks`
 
-Prompts for the password, decrypts and validates the inner JSON document, then shows the vault label, UUID, creation timestamp, schema version, and wallet-record count. It does not query a blockchain or reveal recovery phrases.
+Lists Bitcoin Mainnet and five supported EVM mainnet profiles, plus the unimplemented Monero adapter.
 
-```bash
-vaultsh vault check ./main.vault
-```
+### `vaultsh privacy`
 
-### `vaultsh vault backup SOURCE DESTINATION [--overwrite]`
+Shows privacy defaults and warns that network queries disclose addresses and connection metadata to the selected endpoint. Tor transport is not implemented.
 
-Copies encrypted file bytes to a new path without decrypting the source. The destination is not replaced unless `--overwrite` is provided. This command does not prove the password is correct or validate the decrypted document; run `vaultsh vault check` against the restored backup.
+### `vaultsh config`
 
-```bash
-vaultsh vault backup ./main.vault ./backups/main.vault.backup
-```
-
-### `vaultsh vault restore SOURCE DESTINATION [--overwrite]`
-
-Copies an encrypted backup into a vault path. Destination replacement is refused unless `--overwrite` is supplied.
-
-```bash
-vaultsh vault restore ./backups/main.vault.backup ./restored.vault
-vaultsh vault check ./restored.vault
-```
-
-## Wallet commands
-
-Wallet creation and recovery below operate locally/offline. This release supports Bitcoin Mainnet only, and its balance lookup is a separate explicit network command.
-
-### `vaultsh wallet create --vault PATH [--label LABEL]`
-
-Creates a 12-word English BIP-39 phrase using 128 bits of operating-system entropy, derives the first BIP-84 Native SegWit receive address, and stores the phrase inside the encrypted vault. The phrase is displayed after creation.
-
-```bash
-vaultsh wallet create --vault ./main.vault --label "Bitcoin Main"
-```
-
-Record the phrase offline and never share it. Do not send funds to this pre-alpha software.
-
-### `vaultsh wallet recover --vault PATH [--label LABEL]`
-
-Prompts for a recovery phrase with hidden input, then prompts for the vault password. It accepts valid English BIP-39 phrases of 12 or 24 words. The optional BIP-39 passphrase must be empty.
-
-```bash
-vaultsh wallet recover --vault ./main.vault --label "Recovered wallet"
-```
-
-### `vaultsh wallet list --vault PATH`
-
-Decrypts and validates the vault, then lists public metadata: wallet ID, label, network, first receive address, and derivation path. Recovery phrases are not returned by the listing API or printed by this command. This command does not query the blockchain.
-
-```bash
-vaultsh wallet list --vault ./main.vault
-```
-
-### `vaultsh wallet recovery-phrase WALLET_ID --vault PATH`
-
-Requires explicit confirmation and the vault password before printing the requested recovery phrase. Avoid using it during screen sharing, terminal recording, or on an untrusted machine.
-
-```bash
-vaultsh wallet recovery-phrase WALLET_ID --vault ./main.vault
-```
-
-Replace `WALLET_ID` with an ID shown by `wallet list`.
-
-## Bitcoin balance command
-
-### `vaultsh bitcoin balance ADDRESS --endpoint URL --config PATH --allow-network`
-
-Queries one Bitcoin Mainnet address through a user-selected Esplora-compatible endpoint. The request is read-only and uses `GET /address/{address}`. The client reads the endpoint's confirmed and mempool transaction-output statistics, calculates values in integer satoshis, and displays BTC values without floating-point arithmetic.
-
-```bash
-vaultsh config-init ./vaultsh.toml
-# Edit vaultsh.toml: set network_requests_enabled = true
-vaultsh bitcoin balance ADDRESS \
-  --endpoint https://esplora.example/api \
-  --config ./vaultsh.toml \
-  --allow-network
-```
-
-`esplora.example` is a placeholder; replace it with a compatible endpoint you trust. Vaultsh does not select a default provider.
-
-Both conditions below are required before the command constructs a client:
-
-1. `[app].network_requests_enabled = true` in the TOML file supplied by `--config`.
-2. The command-line flag `--allow-network`.
-
-The command also refuses to connect if `tor_enabled = true`, because this release does not implement Tor transport. It will not silently fall back to a direct connection in that case.
-
-### Endpoint and privacy behavior
-
-- Remote endpoints must use HTTPS. Plain HTTP is accepted only for `localhost` or a loopback IP address, mainly for a local Esplora service.
-- Endpoint URL credentials, query strings, fragments, malformed ports, and dot-segment paths are rejected.
-- HTTP redirects are not followed. Ambient `HTTP_PROXY`/`HTTPS_PROXY` environment variables are not used by this client.
-- The request has a timeout and a bounded response size. Malformed JSON, unexpected fields, invalid satoshi values, and a response for another address are rejected.
-- The address and connection metadata (potentially including your IP address) are disclosed to the selected endpoint. Choose a trustworthy endpoint; a self-hosted service may reduce third-party exposure but still requires correct configuration and host security.
-- Returned numbers are service-provided data, not a proof of ownership or a cryptographic proof that the result is complete or current. Only the supplied address is queried; no wallet-wide address discovery or balance aggregation is performed.
-
-No transaction data is submitted. Transaction construction, signing, broadcasting, fee estimation, and complete history are not implemented.
+Shows default non-secret config values without reading or displaying secrets.
 
 ## Configuration commands
 
 ### `vaultsh config-init PATH [--force]`
 
-Writes a non-secret TOML template with `[app]`, `app_name`, `telemetry_enabled`, `network_requests_enabled`, `tor_enabled`, and `request_timeout_seconds`.
+Writes a sample TOML configuration. Refuses to replace an existing file unless `--force` is passed.
 
 ### `vaultsh config-check PATH`
 
-Validates TOML syntax, allowed sections and keys, value types, timeout range, and the rule that `tor_enabled = true` requires `network_requests_enabled = true`. Unknown keys are rejected rather than silently ignored.
+Validates TOML syntax, known sections/keys, setting types, timeout range, and Tor/network consistency.
 
-A valid config does not automatically make a network request. Only the Bitcoin balance command currently uses network settings, and it still requires `--allow-network`.
+## Vault commands
 
-## Errors and exit behavior
+### `vaultsh vault init PATH [--label LABEL]`
 
-Expected operational errors display a human-readable message and exit non-zero. Do not rely on exact exception wording as a stable API; the project is pre-alpha and error text may change. Network errors are intentionally summarized and do not include recovery phrases or vault contents.
+Creates a new encrypted metadata vault. Prompts for a hidden password twice. The password must be at least 12 characters. Existing paths are not overwritten.
 
-## Not available in 0.4.5
+### `vaultsh vault check PATH`
 
-- Address-gap discovery, used-address scanning, wallet-wide balance aggregation, or transaction history.
-- Bitcoin Core RPC support or node administration.
-- Fee estimation, transaction construction, PSBT signing, or broadcasting.
-- Ethereum/EVM and Monero wallet support.
-- Tor process control or traffic routing.
+Prompts for the password, authenticates/decrypts the file, validates the inner schema, and displays public metadata only.
 
-A network adapter or Tor settings helper does not imply the associated functionality is complete.
+### `vaultsh vault backup SOURCE DESTINATION [--overwrite]`
+
+Creates a byte-for-byte copy of an encrypted vault. The source is not decrypted by the copy operation.
+
+### `vaultsh vault restore SOURCE DESTINATION [--overwrite]`
+
+Restores an encrypted backup to a new destination path by default. Run `vaultsh vault check DESTINATION` afterward.
+
+## Bitcoin wallet commands
+
+### `vaultsh wallet create --vault PATH [--label LABEL]`
+
+Creates an offline Bitcoin Mainnet wallet using a 12-word English BIP-39 phrase and derives the first BIP-84 Native SegWit address at `m/84'/0'/0'/0/0`. The recovery phrase is displayed once and also stored inside the encrypted vault payload.
+
+### `vaultsh wallet recover --vault PATH [--label LABEL]`
+
+Imports a valid English BIP-39 12- or 24-word phrase with empty BIP-39 passphrase. Input is hidden. It stores the phrase inside the encrypted vault and derives the same supported first receive address.
+
+### `vaultsh wallet list --vault PATH`
+
+Prompts to unlock the vault and displays public wallet metadata only; it does not show recovery phrases.
+
+### `vaultsh wallet recovery-phrase WALLET_ID --vault PATH`
+
+Requires an explicit confirmation and vault password before displaying the phrase. Use only in a private place; terminal output may be captured by screenshots, logs, or screen-recording tools.
+
+## Bitcoin read-only commands
+
+Both Bitcoin network commands require a user-supplied Esplora endpoint, a config file with `network_requests_enabled = true`, and `--allow-network`. If `tor_enabled = true`, the command refuses to make a direct request.
+
+### `vaultsh bitcoin balance ADDRESS --endpoint URL --config PATH --allow-network`
+
+Queries `GET /address/{address}` for one Bitcoin Mainnet address. Displays confirmed balance, net unconfirmed change, and estimated total in satoshis and BTC, using integer arithmetic.
+
+### `vaultsh bitcoin history ADDRESS --endpoint URL --config PATH [--limit N] --allow-network`
+
+Queries `GET /address/{address}/txs` and displays at most 25 entries from the first response page. `--limit` defaults to 10 and must be from 1 to 25. Output includes transaction ID, confirmation state, block height/time (for confirmed entries), and fee when supplied.
+
+This is not a complete wallet history, does not paginate, and does not discover additional addresses.
+
+## EVM read-only balance commands
+
+### `vaultsh ethereum balance ADDRESS --endpoint URL --config PATH --allow-network`
+
+Validates a 20-byte `0x` address; mixed-case forms must pass EIP-55. Sends `eth_chainId` first and proceeds only when it matches the selected profile. Then calls `eth_getBalance` with `[ADDRESS, "latest"]`. Balances are displayed using integer-only 18-decimal formatting.
+
+`vaultsh ethereum balance` always selects Ethereum Mainnet (chain ID `1`, ETH). The generic command supports these exact profiles:
+
+| `--chain` | Network | Chain ID | Native asset |
+|---|---|---:|---|
+| `ethereum` | Ethereum Mainnet | `1` | ETH |
+| `polygon` | Polygon PoS Mainnet | `137` | POL |
+| `arbitrum` | Arbitrum One | `42161` | ETH |
+| `optimism` | Optimism Mainnet | `10` | ETH |
+| `base` | Base Mainnet | `8453` | ETH |
+
+Example:
+
+```bash
+vaultsh evm balance 0xYOUR_ADDRESS --chain arbitrum \
+  --endpoint https://YOUR-ARBITRUM-RPC --config ./vaultsh.toml --allow-network
+```
+
+This command queries native assets only. It does not create/import EVM wallets, derive private keys, query ERC-20 token contracts, retrieve EVM transaction history, estimate gas, or build/sign/broadcast transactions.
+
+## Operational behavior and errors
+
+- No public provider is chosen automatically.
+- Remote HTTPS endpoints are required; plain HTTP is limited to loopback.
+- Requests use timeouts and bounded response bodies, reject redirects, and ignore environment proxy variables.
+- RPC response IDs, schemas, quantities, addresses, and chain ID are validated. Provider error messages are not echoed verbatim.
+- Expected failures exit non-zero and show a sanitized message. Error text is not a stable API in pre-alpha.
+- Read-only results are provider-supplied data, not proof of address ownership or a cryptographic proof of balance.

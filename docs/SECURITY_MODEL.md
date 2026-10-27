@@ -1,83 +1,57 @@
-# Security model and limitations
+# Security model
 
-## Status first
+This document describes the current boundaries of Vaultsh **0.6.0**. Vaultsh is pre-alpha, unaudited, and unsuitable for real funds.
 
-**Vaultsh 0.4.5 is experimental, pre-alpha, unaudited, and not suitable for real funds.** Passing automated tests proves only that tested cases passed; it does not establish the safety of the wallet or storage format.
+## Assets
 
-## Assets to protect
+- Recovery phrases stored inside the encrypted vault payload.
+- The vault password and encrypted vault/backup files.
+- Addresses and endpoint metadata associated with network queries.
+- Integrity of locally displayed public wallet information and provider-supplied balances.
 
-- Recovery phrases and private key material derived from them.
-- Vault passwords.
-- Encrypted vault files and backups.
-- Public wallet metadata that may reveal wallet ownership or intended use.
-- Public addresses submitted to a balance endpoint and associated connection metadata.
-- Future node/RPC connection metadata and configuration credentials.
+## Assumptions
 
-A recovery phrase is a bearer secret: anyone who has it may recover the associated wallet without the Vaultsh password. The password protects the local vault file; it does not revoke or replace the recovery phrase.
+Vaultsh assumes Python and its dependencies are installed from trusted sources, the operating system and local user account are not compromised, and the user reviews any endpoint before authorizing a network query. Those assumptions may not hold on a malware-infected machine, shared computer, or untrusted package mirror.
 
-## Implemented protections
+## Protection mechanisms implemented
 
-- Recovery phrase entry uses hidden terminal prompts during recovery; vault password prompts are hidden.
-- New vault passwords have a minimum length of 12 characters. Use a longer, unique, high-entropy password rather than relying on the minimum.
-- Data is encrypted with AES-256-GCM using a Scrypt-derived key. Salt and nonce are generated from operating-system randomness; header fields are authenticated as associated data.
-- Scrypt parameters from file input are validated against bounds before running the KDF.
-- The encrypted vault file has a size limit.
-- Writes use a temporary file and attempt an atomic write workflow; on supported non-Windows filesystems the implementation attempts to set permissions to `0600`.
-- Existing files are not overwritten unless the relevant CLI option/helper explicitly permits it.
-- Wallet records are validated and duplicate IDs/addresses are rejected.
-- Standard wallet listing returns public metadata without recovery phrases.
-- Revealing a phrase requires explicit confirmation and the vault password.
-- Telemetry and network access are disabled by default. The balance command requires both configuration enablement and `--allow-network`.
-- The balance client requires HTTPS for remote endpoints, permits HTTP only for loopback, rejects URL credentials/query/fragments, disables redirects and ambient environment proxies, bounds response size, and uses a timeout.
-- The balance client accepts a public address only; it does not receive wallet secrets.
-- If `tor_enabled = true`, the balance command refuses to connect, avoiding a direct-connection fallback that might be mistaken for Tor protection.
+- Vault document contents use Scrypt-derived key material and AES-256-GCM authenticated encryption.
+- Random salts/nonces come from the operating system.
+- Vault data is validated after decryption; writes use the project's atomic-write helper.
+- Normal wallet listing returns public summaries without mnemonics.
+- Showing a recovery phrase requires explicit confirmation and unlocking the vault.
+- Network operations need both configuration permission and `--allow-network`.
+- Endpoints are user-selected; remote URLs require HTTPS; credentials/query/fragment and path traversal are rejected.
+- Network responses are bounded by byte limits and timeouts. Redirects are disabled and ambient proxy variables are ignored.
+- EVM RPC validates the JSON-RPC version/request ID and requires the chain ID to match one of five explicit network profiles. Mixed-case EVM addresses require EIP-55 checksum validation.
+- Bitcoin history validates transaction IDs/status fields and caps the number of displayed rows.
 
-These are implemented safeguards, not a security guarantee. File permissions differ across operating systems, and atomic-write behavior depends on filesystem semantics.
+## Known weaknesses and gaps
 
-## Threats not solved
+- No independent cryptographic, key-management, or application security audit has occurred.
+- Python does not guarantee zeroization of secrets from memory.
+- Recovery words are displayed in the terminal at creation; terminal capture/screen recording can expose them.
+- Anyone with the recovery phrase can recover the corresponding Bitcoin wallet regardless of the vault password.
+- The current vault record schema stores Bitcoin wallet records only. EVM support is read-only and stores no EVM private keys.
+- Bitcoin address balance/history results are limited to one address and a provider's current response; the app does not scan all wallet addresses or independently verify state proofs.
+- EVM balance data is supplied by the chosen RPC provider. It is not a balance proof. The endpoint learns the queried address and connection metadata.
+- Endpoint validation cannot make a provider trustworthy, prevent network-level observation, or defend a compromised endpoint. Users must configure only endpoints they trust.
+- Tor transport, transaction construction, fee/gas handling, signing, broadcasting, wallet-wide history, EVM transaction history, token balances, and Monero are not implemented.
+- Tests use mock responses. Tests do not certify real-world interoperability, operation on every platform, or security.
 
-Vaultsh does not protect against:
+## Network privacy flow
 
-- Malware, remote access, keyloggers, process-memory inspection, a compromised Python environment, a hostile administrator, or physical access to an unlocked machine.
-- Secrets captured by terminals, screen sharing, screenshots, streaming, clipboard managers, shell instrumentation, or logs.
-- Weak vault passwords and offline guessing against stolen vaults/backups.
-- Loss, theft, or disclosure of the recovery phrase.
-- Address reuse, blockchain analysis, endpoint metadata collection, or identification of public-chain transactions.
-- Incorrect, stale, incomplete, or malicious balance data supplied by the selected API.
-- Errors in `embit`, Python, the operating system, cryptographic dependencies, the API provider, or this application's integration.
+For a network query, the CLI validates config, requires explicit command-line intent, refuses to connect if `tor_enabled` is true because Tor transport is not implemented, constructs the selected client, then sends only the documented read-only query. No automatic fallback to direct connection occurs from a Tor setting. Public blockchain data remains publicly observable regardless of transport.
 
-Python strings and intermediate objects cannot be reliably zeroized with the guarantees expected from some lower-level secure-memory designs.
+## Required work before real-funds use
 
-## Network and privacy model
+1. Independent review of encryption, KDF parameters, vault format and file writes.
+2. Independent review of Bitcoin key derivation and recovery against official vectors.
+3. Secret lifecycle review including terminal output, exceptions, memory, backups, and compromised-machine scenarios.
+4. Dependency/license/supply-chain review and reproducible release artifacts.
+5. Fuzzing and adversarial testing of JSON schema, vault envelopes, endpoint URLs, Esplora payloads, and JSON-RPC payloads.
+6. Platform CI and integration testing against controlled self-hosted nodes.
+7. Security design review before implementing transaction construction, signing, broadcasting, or Tor transport.
+8. Clear, private vulnerability-reporting process and an independent audit.
 
-Wallet phrase generation, recovery, and first-address derivation operate locally. The optional balance command performs one read-only request to the exact user-supplied endpoint, with `GET /address/{address}`. It requires both `network_requests_enabled = true` in the chosen TOML file and `--allow-network` on the command line. No endpoint is selected automatically.
-
-The endpoint receives the requested public address and can observe connection metadata, potentially including the client's IP address and request timing. A trusted self-hosted service can reduce third-party exposure but does not eliminate network metadata or host risks. Returned balance data is not independently verified by Vaultsh and is not a proof of wallet ownership.
-
-The client requires HTTPS for remote hosts, permits plain HTTP only on localhost/loopback, does not follow redirects, and ignores ambient proxy environment variables. This is a direct request; Tor is not implemented. If the config enables `tor_enabled`, the CLI refuses to connect. Public blockchain activity remains observable and may be traceable regardless of transport.
-
-## Recovery and backup recommendations
-
-- Write the phrase down offline and verify it independently before relying on a wallet.
-- Keep recovery material separate from the encrypted vault and its backup.
-- Store a backup in a second protected location and periodically verify that it can be opened.
-- Never upload vaults, backups, phrases, or passwords to public issue trackers or share them in chat.
-- Do not accept a phrase through shell arguments or environment variables; command-line history and process listings can expose arguments.
-- Use only synthetic data for tests and bug reports.
-
-## Before considering a real-funds release
-
-A release candidate needs, at minimum:
-
-1. Independent review of the encryption envelope, KDF parameters, file format, and atomic-write behavior on supported filesystems.
-2. Independent review of BIP-39/BIP-32/BIP-84 integration against authoritative vectors.
-3. Secret-lifecycle analysis covering prompts, exceptions, logging, terminal output, process memory, and backups.
-4. Dependency and supply-chain review, reproducible release artifacts, and platform CI.
-5. Fuzzing and malformed-input tests for encrypted envelopes, JSON schemas, and user-supplied phrases.
-6. Network-client privacy and interoperability review, plus address-discovery tests before wallet-wide balances are reported.
-7. Security design review of transaction construction, signing, and broadcast before any implementation.
-8. A documented responsible-disclosure process and independent security audit.
-
-## Vulnerability reporting
-
-Follow [SECURITY.md](../SECURITY.md). Do not include live wallet secrets or real funds in a report. Use a private repository security channel where one is configured; do not publish exploit details prematurely.
+See [SECURITY.md](../SECURITY.md) for reporting guidance. Do not publish secrets or exploit details in a public issue.

@@ -1,34 +1,75 @@
 # Roadmap
 
-This is a directional plan, not a promise that a feature is safe or scheduled for a particular release. The project remains pre-alpha and must not be used with real funds.
+This is a directional roadmap, not a promise of delivery dates. Vaultsh **0.6.0 remains pre-alpha** and must not be used with real funds.
 
-## Current baseline: 0.4.5
+## Current baseline: 0.6.0
 
-- [x] Typer/Rich terminal interface.
-- [x] Validated non-secret TOML settings with privacy-preserving defaults.
-- [x] Password-derived encryption envelope using Scrypt and AES-256-GCM.
-- [x] Encrypted local vault file with versioned inner document.
-- [x] Encrypted byte-for-byte backup and restore.
-- [x] Read/validate schema-v1 metadata-only vaults and store schema-v2 Bitcoin wallet records.
-- [x] Generate/recover English BIP-39 phrases (12 words generated; 12 or 24 accepted for recovery).
-- [x] Derive the first Bitcoin Mainnet BIP-84 Native SegWit receiving address.
-- [x] List public wallet metadata without returning recovery phrases.
-- [x] Query confirmed and net-unconfirmed statistics for one user-supplied Bitcoin Mainnet address through an explicit Esplora endpoint.
-- [x] Require configuration permission and `--allow-network`; disable redirects and environment proxies; bound API response size and timeout.
-- [x] Refuse a balance lookup when Tor is enabled in config but no Tor transport is implemented.
+- [x] Typer/Rich terminal interface and versioned command groups.
+- [x] Validated non-secret TOML config; telemetry and network requests default off.
+- [x] Password-derived encrypted envelope using Scrypt and AES-256-GCM.
+- [x] Encrypted local vault documents with schema-v1 reading and schema-v2 Bitcoin wallet records.
+- [x] Encrypted byte-for-byte backup and restore flows.
+- [x] Bitcoin Mainnet BIP-39/BIP-32/BIP-84 offline wallet creation/recovery for a limited first receive address.
+- [x] Bitcoin Mainnet address-balance query through explicitly selected Esplora.
+- [x] Bitcoin Mainnet first-page address transaction history query, limited to 25 entries.
+- [x] Read-only native asset balance queries for Ethereum, Polygon PoS, Arbitrum One, Optimism, and Base through explicitly selected JSON-RPC with chain-ID pinning.
+- [x] EVM `eth_chainId` validation against the selected profile before querying a native balance.
+- [x] EVM address syntax validation and EIP-55 checksum check for mixed-case addresses.
+- [x] Dual network opt-in (`network_requests_enabled = true` and `--allow-network`) with explicit endpoint choice.
+- [x] Redirect blocking, direct-connection behavior, timeouts, response-size limits, response-schema validation, and sanitized provider errors.
+- [x] Network-client tests built on mocked responses, including network opt-in tests.
+- [x] Architecture, CLI, config, network-adapter, security, development, changelog, and contribution docs.
+- [ ] CI results for Windows and Linux confirmed on the hosted runner; local CI configuration alone is not proof of success.
+- [ ] Run all official Bitcoin and EIP-55 vectors in an environment with every runtime dependency installed; local missing-dependency skips remain documented.
+- [ ] Independent security and dependency review.
 
-## Near-term candidates
+## Phase 1 — Project foundation
 
-1. **Release quality:** complete platform CI, ensure `embit` test vectors run in CI, run Ruff/mypy, add a package build check, dependency auditing, and validate release artifacts.
-2. **Address discovery and wallet-wide accounting:** derive a documented range of receive/change addresses, apply a tested gap-limit policy, and aggregate balances/history without falsely presenting a single-address result as a whole-wallet total.
-3. **Node support and transport privacy:** evaluate a local Bitcoin Core RPC client and harden workflows for self-hosted Esplora endpoints. Add a testable transport abstraction only when redirect/proxy behavior, connection policy, and errors are covered. Do not claim Tor support until requests are demonstrably routed through it without direct-connect fallback.
-4. **Transaction preparation:** introduce human-readable transaction preview, fee/UTXO policy, change handling, and strict network/address validation before signing.
-5. **Signing design:** obtain independent review of key custody, PSBT handling, change-address logic, network selection, fee handling, and signing before implementing signing or broadcasting.
+- [x] Initial Python package layout and Typer/Rich CLI.
+- [x] Basic tests and development-tool configuration.
+- [x] Non-secret TOML template and validation commands.
+- [x] Threat model, contribution guidelines, and documentation index.
+- [ ] Hosted CI pipeline exercised successfully on Windows/Linux and maintained as a release gate.
+- [ ] Automated dependency/license audit and release provenance.
 
-## Multi-chain direction
+## Phase 2 — Secure local storage
 
-Ethereum/EVM and Monero need separate adapter designs and well-defined cryptographic/key-derivation rules. Adding a folder or a generic interface is not the same as implementing a wallet. Each chain requires official vectors, tests, network-specific threat analysis, and separate documentation.
+- [x] Versioned metadata document format inside an encrypted envelope.
+- [x] Scrypt parameter validation and AES-256-GCM authenticated encryption helper.
+- [x] Atomic file writes, malformed-data handling, and encrypted backup/restore tests.
+- [x] Limited Bitcoin wallet records with recovery material inside the encrypted payload.
+- [ ] Independent review of encryption format, secret handling, and backup/restore behavior.
+- [ ] Add a migration/export strategy before broadening the encrypted wallet schema to multiple chain families.
+
+## Phase 3 — First blockchain integration
+
+- [x] Select Bitcoin Mainnet and BIP-39/BIP-84 as the first offline wallet flow.
+- [x] Address-scoped Bitcoin Mainnet balance lookup and first-page transaction history.
+- [x] Read-only EVM native-asset balance lookup for five explicit mainnet profiles.
+- [x] Basic address validation and official-vector-style tests included in the repository.
+- [ ] Bitcoin address discovery, gap-limit handling, change-address tracking, and complete wallet-wide balance/history.
+- [ ] EVM wallet creation/recovery, private-key handling, and secure vault records.
+- [ ] ERC-20 token balances and EVM transaction history.
+- [ ] Human-readable transaction preview, fee/gas calculation, transaction building, and offline signing design.
+- [ ] Independent review before any real-funds use.
+
+## Phase 4 — Privacy and additional chains
+
+- [x] User-configurable endpoint selection for Esplora and EVM JSON-RPC.
+- [x] Document self-hosted endpoint expectations and network metadata exposure.
+- [ ] Implement and test genuine Tor transport; do not treat the settings flag as support.
+- [ ] Add Monero with its own key/address/view-key privacy model and official test vectors.
+- [ ] Add further EVM networks only after chain IDs, native-asset semantics, endpoint requirements, and tests are explicit.
+- [ ] Test network behavior against controlled local nodes and realistic hostile responses.
+
+## Phase 5 — Release hardening
+
+- [ ] Automated Windows, Linux, and Android/Termux compatibility testing.
+- [ ] Hosted CI and release checks proven on supported runtimes.
+- [ ] Dependency, license, and supply-chain audits.
+- [ ] Independent security review/audit.
+- [ ] Documented stable-release criteria and responsible disclosure workflow.
 
 ## Release gates before real funds
 
-No real-funds release should be considered until the project has independent security review, dependency/supply-chain review, platform CI, comprehensive malformed-input tests, tested recovery workflows, careful release packaging, and a documented disclosure channel. A high test count alone is not a security certification.
+Do not treat a high test count or an incremented version number as evidence that funds are safe. A future stable release requires reviewed key custody and recovery, complete wallet address discovery, audited transaction construction/signing, platform validation, robust backups, independent security review, and a documented release process.

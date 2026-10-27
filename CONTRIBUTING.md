@@ -1,107 +1,87 @@
 # Contributing to Vaultsh
 
-Thank you for helping improve Vaultsh. It is a pre-alpha security-sensitive project, so small, reviewable changes are preferred over broad, hard-to-audit patches.
+Vaultsh is a pre-alpha security-sensitive project. Contributions should be small, reviewable, tested with synthetic data, and documented accurately. Do not claim a feature is implemented if it is only scaffolded or mocked.
 
-## Before making a change
-
-1. Read [README.md](README.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
-2. Open an issue or write down the problem and the intended behavior before making a large change.
-3. Keep chain-specific behavior inside the relevant network adapter. Do not assume that address derivation, signatures, key formats, or transaction rules are identical across chains.
-4. Never put real recovery phrases, private keys, passwords, wallet files, or personal wallet data in code, tests, screenshots, logs, commits, or bug reports. Use synthetic test vectors only.
-5. Add or update tests for behavioral changes. Cryptographic changes require standard vectors and careful review, not only tests that mirror the implementation.
-
-## Development setup
+## Development checks
 
 ```bash
-python -m venv .venv
-# Activate the environment for your shell, then:
-python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-pytest
+pytest -q
 ruff check .
+ruff format --check .
 mypy src/vaultsh
+python -m compileall -q src tests
+python -m build
 ```
 
-For Windows PowerShell, activate the environment with `\.venv\Scripts\Activate.ps1`. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for more detail.
-
-## Commit-message style
-
-Use one emoji prefix followed by a short English imperative sentence. Keep each commit focused on one logical change. The following vocabulary is recommended:
-
-| Emoji | Use it for | Example commit message |
-|---|---|---|
-| 🔄 | Changed or updated behavior/configuration | `🔄 Update configuration handling` |
-| ✨ | A new feature | `✨ Add encrypted vault storage` |
-| 🐛 | A bug fix | `🐛 Fix config validation` |
-| 🔒 | Security hardening or security-related changes | `🔒 Harden encryption parameters` |
-| ⚡ | Performance improvement | `⚡ Improve startup performance` |
-| 📝 | Documentation-only change | `📝 Update README` |
-| ♻️ | Refactoring without intended behavior change | `♻️ Refactor network policy helpers` |
-| 🧪 | Tests or test infrastructure | `🧪 Add encryption unit tests` |
-| 🔥 | Removal of obsolete or deprecated functionality | `🔥 Remove deprecated module` |
-| 🚀 | Version release or release preparation | `🚀 Release MVP 0.1.0` |
-
-Write in English so commit history remains consistent across contributors. Use imperative verbs such as `Add`, `Fix`, `Update`, `Harden`, `Refactor`, `Remove`, and `Release`. Do not use a vague message such as `changes`, `update`, or `fixed stuff`.
-
-### Examples by task
-
-```text
-✨ Add Bitcoin wallet recovery command
-🐛 Fix malformed vault document handling
-🔒 Bound Scrypt parameters before key derivation
-🧪 Add BIP-84 address derivation vectors
-📝 Document encrypted vault schema v2
-♻️ Extract wallet record validation helper
-🔄 Update release metadata to 0.4.5
-🚀 Release Vaultsh 0.4.5
-```
+Run all checks that are available. If a dependency/tool is missing or tests skip a standard vector, record that explicitly rather than reporting a complete pass.
 
 ## Changelog format
 
-Keep `CHANGELOG.md` updated whenever user-visible behavior, dependencies, security posture, supported formats, or developer workflow changes. Add unreleased work under `## 🚧 [Unreleased]`, then use one or more matching subsections:
+Use the release heading and categories in `CHANGELOG.md`:
 
-- `### ✨ Added` — new functionality.
-- `### 🔄 Changed` — changed or updated behavior.
-- `### 🐛 Fixed` — bug fixes.
-- `### 🔒 Security` — security-relevant changes.
-- `### ⚡ Performance` — performance improvements.
-- `### ♻️ Refactored` — internal refactoring without intended behavioral changes.
-- `### 🧪 Tests` — new tests or test infrastructure.
-- `### 📝 Documentation` — documentation-only changes.
-- `### 🔥 Removed` — removed functionality.
-- `### 🛡️ Security notes and limitations` — release-specific caveats and known limitations.
+```markdown
+## 🚀 [0.6.0] - 2026-10-27
 
-Changelog entries describe what changed and why from a user's or maintainer's perspective. Do not put secrets or exploit details into the changelog. When cutting a release, move the relevant entries out of `[Unreleased]`, add the release version and date, update `pyproject.toml` and `src/vaultsh/__init__.py`, and verify all version strings agree.
+### ✨ Added
+- Added ...
 
-## Local change workflow
+### 🔄 Changed
+- Updated ...
 
-```bash
-git status --short
-pytest
-ruff check .
-mypy src/vaultsh
-git diff --check
-git diff
+### 🐛 Fixed
+- Fixed ...
+
+### 🔒 Security notes and limitations
+- ...
 ```
 
-After reviewing the diff, stage only the intended files and commit the change:
+New work goes under `## 🚧 [Unreleased]` until a release is cut. Keep entries user-visible, specific, and truthful. Include relevant security limitations; do not write “secure” or “audited” based only on tests.
 
-```bash
-git add README.md docs/ CHANGELOG.md CONTRIBUTING.md
-git commit -m "📝 Add complete project documentation"
+## Emoji and commit-message guide
+
+Use one leading emoji and an imperative English phrase. Emoji describe the primary intent of a change.
+
+| Emoji | Use it for | Example |
+|---|---|---|
+| 🔄 | Update existing behavior/configuration | `🔄 Update configuration handling` |
+| ✨ | Add a user-visible feature | `✨ Add Ethereum balance lookup` |
+| 🐛 | Fix a defect | `🐛 Fix JSON-RPC response validation` |
+| 🔒 | Security hardening | `🔒 Reject unverified RPC redirects` |
+| ⚡ | Performance improvement | `⚡ Reduce startup overhead` |
+| 📝 | Documentation-only change | `📝 Update network adapter guide` |
+| ♻️ | Refactoring without intended behavior change | `♻️ Refactor network permission checks` |
+| 🧪 | Add or improve tests | `🧪 Add Ethereum RPC client tests` |
+| 🔥 | Remove obsolete code/functionality | `🔥 Remove deprecated network helper` |
+| 🚀 | Release preparation | `🚀 Release Vaultsh 0.6.0` |
+
+Examples of complete commit messages:
+
+```text
+✨ Add Ethereum Mainnet balance lookup
+🧪 Add mocked JSON-RPC chain-ID tests
+📝 Document Bitcoin address-history limits
+🔒 Reject malformed Ethereum address checksums
+🚀 Release Vaultsh 0.6.0
 ```
 
-Do not stage vaults, backups, seed phrases, credentials, generated caches, coverage reports, or build output. `.gitignore` excludes common sensitive and generated files, but always inspect `git status` before committing.
+If a commit contains several distinct changes, split it when practical. Do not use `🚀 Release` for ordinary changes that do not cut a version.
 
-## Pull request checklist
+## Pull-request checklist
 
-- [ ] The problem and the intended behavior are described.
-- [ ] Tests cover the change, including failure paths where relevant.
-- [ ] Tests, Ruff, and mypy have been run or any limitation is clearly reported.
-- [ ] Documentation and `CHANGELOG.md` are updated where needed.
-- [ ] No secrets, real wallet data, generated caches, or unrelated files are included.
-- [ ] Security-sensitive claims are accurate and do not imply an audit or production readiness.
+- [ ] The change has a clear scope and does not silently enable network traffic.
+- [ ] Chain-specific address, derivation, unit, and RPC rules stay in that chain's adapter.
+- [ ] Tests cover valid, malformed, and hostile responses without calling public APIs.
+- [ ] No real recovery phrase, password, private key, vault, backup, or endpoint token is included.
+- [ ] Relevant README, CLI/configuration/security docs, and CHANGELOG are updated.
+- [ ] `git diff --check` passes and generated caches/artifacts are excluded.
+- [ ] Results accurately report skipped tests, unrun tools, and unverified platforms.
 
-## Security reports
+## Release checklist
 
-Do not open a public issue containing a secret or an exploitable vulnerability. Follow [SECURITY.md](SECURITY.md) and use a private reporting channel configured by the repository maintainers.
+1. Update version metadata in `pyproject.toml` and `src/vaultsh/__init__.py`.
+2. Move the release notes from `Unreleased` into a dated version heading.
+3. Install all runtime/dev dependencies and run the full suite with no unexpected skips.
+4. Run Ruff, mypy, package build, and automated Windows/Linux CI.
+5. Inspect the archive for caches, `.coverage`, local configs, vaults, backups, and other secrets.
+6. Update test results and security limitations; do not equate test count with audit status.

@@ -1,25 +1,32 @@
-# Vaultsh documentation
+# Vaultsh documentation index
 
-Vaultsh is a pre-alpha Python terminal application. This documentation describes the behavior implemented in **version 0.4.5** and distinguishes it from planned features.
+This documentation describes **Vaultsh 0.6.0**. Vaultsh is a pre-alpha Python terminal application, not an audited wallet for real funds.
 
 ## User documentation
 
-- [CLI reference](CLI_REFERENCE.md) — commands, options, prompts, network permissions, and examples.
-- [Configuration](CONFIGURATION.md) — TOML settings and privacy-preserving defaults.
-- [Encrypted vault format](VAULT_FORMAT.md) — envelope encryption, document schema, and backups.
-- [Security model](SECURITY_MODEL.md) — threat boundaries, secret handling, and network privacy.
-- [Roadmap](ROADMAP.md) — implemented features versus planned work.
+- [README](../README.md) — overview, install, quick start, status matrix, and security warnings.
+- [CLI reference](CLI_REFERENCE.md) — supported commands and options.
+- [Configuration](CONFIGURATION.md) — TOML preferences and the dual network permission gate.
+- [Network adapters](NETWORK_ADAPTERS.md) — Bitcoin Esplora and EVM JSON-RPC behavior, privacy caveats, and limits.
+- [Encrypted vault format](VAULT_FORMAT.md) — encryption envelope, schema v1/v2, and recovery-phrase storage.
+- [Security model](SECURITY_MODEL.md) — threat boundaries, known risks, and security release requirements.
+- [Roadmap](ROADMAP.md) — implemented work and unimplemented goals.
+- [Test results](TEST_RESULTS.md) — actual local test command, result, environment, and skips.
 
 ## Maintainer documentation
 
-- [Architecture](ARCHITECTURE.md) — module ownership and dependency direction.
-- [Development and testing](DEVELOPMENT.md) — environment setup, quality checks, and test policy.
-- [Contributing](../CONTRIBUTING.md) — changes, changelogs, commit style, and pull-request checklist.
-- [Security policy](../SECURITY.md) — vulnerability reporting and user responsibilities.
-- [Changelog](../CHANGELOG.md) — versioned release history.
+- [Architecture](ARCHITECTURE.md) — package ownership and dependency direction.
+- [Development and testing](DEVELOPMENT.md) — local environment and quality checks.
+- [Contributing](../CONTRIBUTING.md) — changelog/commit style, pull-request checklist, and release steps.
+- [Security policy](../SECURITY.md) — how to report vulnerabilities safely.
+- [Changelog](../CHANGELOG.md) — release history and user-visible changes.
 
-## Version and status
+## Current capabilities in 0.6.0
 
-Vaultsh 0.4.5 supports encrypted local vaults; offline Bitcoin Mainnet BIP-39/BIP-84 creation and recovery; and a read-only balance query for one user-specified Bitcoin Mainnet address through a user-selected Esplora-compatible endpoint. Network access requires both a configuration setting and `--allow-network`. Remote endpoints must use HTTPS, and the command does not route through Tor.
+- Encrypted local vault files and encrypted backup/restore.
+- Bitcoin Mainnet BIP-39/BIP-84 wallet creation/recovery (limited to the first receiving address in the implemented path).
+- Read-only Bitcoin Mainnet balance and first-page address transaction history via a user-selected Esplora endpoint.
+- Read-only native-asset balance via a user-selected JSON-RPC endpoint for Ethereum, Polygon PoS, Arbitrum One, Optimism, and Base; each profile has a pinned chain ID.
+- Network use requires both TOML permission and `--allow-network`; Tor is not implemented and direct requests are refused when `tor_enabled = true`.
 
-The implementation does not discover all wallet addresses, aggregate wallet-wide balances, fetch transaction history, construct or sign transactions, broadcast payments, or support Ethereum/EVM or Monero. It has not been independently audited and is not suitable for real funds.
+Ethereum private-key derivation and wallet records, ERC-20 balances, Monero, address-gap discovery, transaction previews, signing, and broadcasting are not implemented. See the [roadmap](ROADMAP.md) for the distinction between completed and planned items.

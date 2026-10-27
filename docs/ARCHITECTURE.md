@@ -1,107 +1,69 @@
 # Architecture
 
-## Design goals
+This document describes the implemented boundaries in Vaultsh **0.6.0**. It is a maintenance guide, not a security audit or a stable public API promise.
 
-Vaultsh is a Python-first, terminal-oriented wallet foundation with local-first defaults. It keeps user interaction, wallet-domain models, chain-specific rules, encrypted storage, and optional network transports separated. Vaultsh 0.4.5 remains a small pre-alpha implementation rather than a fully layered production wallet.
-
-## High-level flow
-
-```text
-User / Terminal
-      |
-      v
-Typer CLI (cli.py) -----> Rich UI helpers
-      |
-      +----> Config + network policy (explicit opt-in gate)
-      |
-      +----> Vault / wallet-store operations
-      |             |
-      |             +----> Bitcoin adapter (BIP-39 / BIP-84, offline)
-      |
-      +----> Bitcoin Esplora client (read-only address statistics)
-      |
-      v
-Versioned vault document <----> Encrypted file I/O <----> Encryption envelope
-```
-
-The Esplora path is separate from wallet creation and vault storage. It accepts a public address, not a seed phrase or vault file, and cannot sign or submit transactions.
-
-## Source tree
+## Source layout
 
 ```text
 src/vaultsh/
 ├── __init__.py                 # Package version
-├── __main__.py                 # `python -m vaultsh` entry point
-├── cli.py                      # Typer commands and orchestration
+├── __main__.py                 # python -m vaultsh entry point
+├── cli.py                      # Typer commands, prompts, and Rich output
 ├── config.py                   # Validated non-secret TOML settings
-├── core/
-│   └── wallet.py               # Public wallet summary model
-├── crypto/
-│   ├── encryption.py           # Scrypt + AES-256-GCM envelope
-│   └── derivation.py           # Derivation-path parser, not key derivation
+├── core/wallet.py              # Network-neutral public wallet summary
+├── crypto/                     # Vault encryption and path helpers
 ├── networks/
-│   ├── base.py                 # Minimal network-adapter Protocol and errors
-│   └── bitcoin/
-│       ├── wallet.py           # Offline BIP-39/BIP-84 operations
-│       └── client.py           # Read-only, explicit Esplora API client
-├── privacy/
-│   ├── network_policy.py       # Explicit request + config permission gate
-│   └── tor.py                  # SOCKS settings only; not a transport
-├── storage/
-│   ├── vault.py                # Encrypted file I/O and atomic replacement
-│   ├── vault_document.py       # Versioned inner JSON schema
-│   ├── wallet_store.py         # Encrypted wallet-record operations
-│   └── backup.py               # Encrypted file copy/restore
-└── ui/
-    ├── panels.py               # Rich notice panels
-    └── prompts.py              # Sensitive-action prompts / transaction text helper
+│   ├── base.py                 # Shared protocol and NetworkError
+│   ├── bitcoin/
+│   │   ├── wallet.py           # BIP-39/BIP-32/BIP-84 receiving address
+│   │   └── client.py           # Esplora balance and address-history queries
+│   └── ethereum/
+│       └── client.py           # Read-only EVM JSON-RPC native-balance queries
+├── privacy/                    # Network policy and Tor configuration helpers
+├── storage/                    # Encrypted vault document, backup, wallet records
+└── ui/                         # Reusable Rich panels and prompts
 ```
 
-The repository also contains `tests/`, root documentation, `pyproject.toml`, and the GPL license.
+`tests/` mirrors key behaviors: CLI, configuration, Bitcoin client/wallet, Ethereum client, encrypted storage, privacy policy, and UI formatting.
 
-## Module responsibilities
+## Responsibility boundaries
 
-### CLI and UI
+### CLI (`cli.py`)
 
-`cli.py` defines user-facing commands, obtains passwords and phrases through hidden prompts, calls domain/storage functions, checks network policy, and formats output. It should not implement cryptographic algorithms. UI helpers are presentation-only and should not read vaults or derive keys.
+The CLI binds user intent to domain operations. It reads non-secret configuration, checks the dual network opt-in, refuses network operations when Tor is configured but unavailable, and formats public output. It should not implement cryptographic primitives or parse arbitrary RPC responses inline.
 
-### Core and chain adapters
+### Configuration (`config.py`)
 
-`core/wallet.py` models public wallet summary information. `networks/base.py` defines a minimal protocol for future chain adapters. `networks/bitcoin/wallet.py` owns Bitcoin-specific BIP-39/BIP-84 derivation and delegates standards-based key derivation to `embit`.
-
-`networks/bitcoin/client.py` calls a user-specified Esplora-compatible `GET /address/{address}` endpoint. It validates the endpoint before making a request, requires callers to enforce the network policy, uses a bounded response body and timeout, disables redirects and environment proxy use, parses confirmed/mempool transaction-output sums, and exposes balances in integer satoshis. It never receives a mnemonic or a vault password.
-
-Do not put Bitcoin address encodings or path rules into a generic helper and assume Ethereum or Monero use the same rules. Each chain adapter must implement and test its own address, key, transaction, and network rules.
+Configuration is for operational preferences only. It defaults telemetry and network requests off. No passwords, recovery phrases, private keys, API tokens, or derived keys belong here.
 
 ### Cryptography and storage
 
-`crypto/encryption.py` implements a password-derived encryption envelope. `storage/vault.py` reads/writes authenticated encrypted bytes and attempts atomic writes. `storage/vault_document.py` validates the JSON document stored inside the encrypted payload. `storage/wallet_store.py` adds and lists wallet records and retrieves phrases for the explicit reveal command. `storage/backup.py` copies encrypted bytes without decrypting them.
+`crypto/encryption.py` implements the local encrypted envelope. `storage/vault_document.py` validates the inner versioned document. `storage/wallet_store.py` stores the current Bitcoin wallet records in the encrypted payload and returns public summaries without recovery phrases. `storage/backup.py` handles encrypted byte-for-byte copies.
 
-These boundaries are helpful but do not constitute a formal security proof. The data format and full secret lifecycle require independent review before any real-funds use.
+EVM balance lookups are read-only and do not add EVM private keys or wallet records to the vault; the current inner schema supports Bitcoin wallet records only.
 
-### Privacy and network permission
+### Network adapters
 
-`config.py` validates application preferences. `privacy/network_policy.py` requires both explicit user intent and configuration permission. The balance command requires the supplied TOML file to enable `network_requests_enabled` and the command to include `--allow-network`. There is no default endpoint.
+Chain-specific code must own address formats, RPC schemas, units, derivation standards, and error validation:
 
-Remote endpoints must use HTTPS. Plain HTTP is accepted only for localhost or loopback IP addresses. The Esplora client disables automatic redirects and ambient proxy settings so the target is not silently changed; the request is direct and does not use Tor. If `tor_enabled = true`, the CLI refuses the request rather than presenting a direct request as Tor-protected.
+- `networks/bitcoin/wallet.py` uses `embit` for English BIP-39 and the first BIP-84 Mainnet receive address.
+- `networks/bitcoin/client.py` queries the one supplied address via Esplora for balance and first-page transactions.
+- `networks/ethereum/client.py` holds an explicit allow-list of five EVM mainnet profiles, validates a 20-byte address and mixed-case EIP-55 checksum, verifies `eth_chainId` against the selected profile, and requests `eth_getBalance` in 18-decimal base units. It does not implement EVM key management or token contracts.
 
-### User interface
+The shared `NetworkAdapter` protocol does not imply that all chains share derivation or signing rules. Monero must have a separate cryptographic design and has no implementation in this version.
 
-Rich tables and panels present command results. Public address/balance output is distinct from secret recovery-phrase output. A balance result includes a privacy notice because a remote endpoint may associate an address with connection metadata.
+### Privacy policy
+
+The CLI enforces both explicit intent (`--allow-network`) and configuration (`network_requests_enabled = true`). Network adapters use explicitly selected endpoints, do not follow redirects, and ignore ambient proxy environment variables. They currently make direct requests. Setting `tor_enabled = true` causes the CLI to refuse these network operations rather than imply that traffic was routed through Tor.
 
 ## Dependency direction
 
-Prefer this direction:
+Keep the preferred flow:
 
-- `cli.py` may call `config`, `networks`, `storage`, `privacy`, and `ui`.
-- `storage` may call `crypto`, `core` models, and required chain-specific validation.
-- A chain adapter may use standards libraries but must not depend on terminal rendering.
-- `ui` should be presentation-only.
-- `crypto` should not import Typer, Rich, or CLI code.
-- The network client should never receive seed phrases, vault passwords, private keys, or decrypted vault documents.
+`cli -> config/privacy gate -> chain adapter or storage service -> crypto/storage primitives`
 
-Avoid circular imports and avoid secrets in public summary models, logs, or exception messages.
+Avoid circular imports and avoid letting UI code make network requests. Network adapters should not choose public providers or silently fetch balances during wallet creation/listing.
 
-## Future architectural work
+## Future extension rules
 
-The next stages include platform CI, dependency/security scanning, network-client interoperability tests, address discovery with a gap limit, and wallet-wide accounting. Transaction construction, PSBT handling, signing, and broadcasting need separate designs and reviews; they must not be introduced merely because a read-only query works.
+Before adding a chain, define its mainnet identifiers, address validation, key derivation and recovery standards, transaction model, unit conversions, RPC semantics, privacy exposure, and official test vectors. Add tests before advertising a capability. An `__init__.py`, folder, or adapter protocol is not implementation evidence.

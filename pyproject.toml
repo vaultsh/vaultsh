@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vaultsh"
-version = "0.4.5"
-description = "A privacy-focused terminal wallet with encrypted vaults, offline Bitcoin derivation, and opt-in read-only balance lookup."
+version = "0.6.0"
+description = "A privacy-focused terminal wallet foundation with encrypted vaults, offline Bitcoin wallets, and opt-in read-only Bitcoin/EVM balance and history queries."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "GPL-3.0-only"
@@ -29,11 +29,13 @@ dependencies = [
   "typer>=0.12,<1",
   "cryptography>=44,<47",
   "embit>=0.8.0,<0.9",
+  "eth-utils>=5.3,<6",
+  "eth-hash[pycryptodome]>=0.7,<1",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8,<9",
+  "pytest>=8,<10",
   "pytest-cov>=6,<8",
   "ruff>=0.9,<1",
   "mypy>=1.14,<2",

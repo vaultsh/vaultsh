@@ -1,15 +1,15 @@
 # Encrypted vault format
 
-This page documents the current local file format as implemented in Vaultsh 0.4.5. It is useful for maintainers and test authors, not an endorsement of the format for production use. The format has not received an independent cryptographic or interoperability audit and may change while the project is pre-alpha.
+This page describes the current vault implementation in Vaultsh **0.6.0**. The format is experimental and has not received an independent cryptographic or interoperability audit.
 
 ## File layers
 
-A vault file has two logical layers:
+A vault file has two layers:
 
 1. An encrypted envelope produced by `vaultsh.crypto.encryption`.
-2. A UTF-8 JSON document inside the envelope, validated by `vaultsh.storage.vault_document`.
+2. A UTF-8 JSON document validated by `vaultsh.storage.vault_document`.
 
-The outer envelope exposes format identification and bounded KDF parameters, salt, and nonce; the document fields and wallet recovery phrases are encrypted. Encrypted bytes and their backups are sensitive artifacts.
+The outer envelope exposes format identification, KDF parameters, salt, and nonce. The document's metadata and Bitcoin recovery phrases are encrypted. Vaults and backups should be treated as sensitive files.
 
 ## Encryption envelope
 
@@ -21,16 +21,16 @@ The current envelope uses:
 - Default Scrypt parameters: `N = 2**15`, `r = 8`, `p = 1`.
 - Salt: 16 random bytes from the operating system.
 - AES-GCM nonce: 12 random bytes.
-- Encryption: AES-256-GCM, 32-byte derived key, authenticated ciphertext/tag.
-- Header bytes are supplied as AES-GCM associated data, so tampering with the envelope header causes authentication failure.
+- Encryption: AES-256-GCM, a 32-byte derived key, and an authentication tag.
+- Header bytes are authenticated as additional data.
 - Accepted Scrypt parameters are bounded before expensive derivation: `N` between `2**14` and `2**16` and a power of two, `r` from 1 to 8, and `p` from 1 to 4.
-- Vault file size is capped at 64 MiB by the file layer.
+- The vault file layer caps input size at 64 MiB.
 
-A wrong password and a modified ciphertext return a generic decryption/authentication error at the envelope layer. The envelope format has not been independently reviewed; changes must preserve authenticated encryption and must not invent custom cryptographic primitives.
+Wrong passwords and tampered ciphertext are reported as generic authentication/decryption failures. Do not invent custom cryptographic primitives or change parameters without tests and independent review.
 
 ## Inner document
 
-The current document has these top-level fields:
+The current schema is version 2. A representative metadata-only document before encryption is:
 
 ```json
 {
@@ -43,59 +43,55 @@ The current document has these top-level fields:
 }
 ```
 
-Values above illustrate the shape only; the UUID and timestamp are examples.
+The values are examples only.
 
 ### Shared fields
 
-- `schema`: must be `vaultsh.vault`.
-- `schema_version`: must be an integer version the application supports.
+- `schema`: must equal `vaultsh.vault`.
+- `schema_version`: an integer in the supported schema list.
 - `vault_id`: canonical lowercase UUID.
-- `label`: non-empty, trimmed string with a maximum of 80 characters and no control characters.
-- `created_at`: ISO 8601 timestamp including timezone information.
+- `label`: trimmed, non-empty string, maximum 80 characters, no control characters.
+- `created_at`: ISO 8601 timestamp with timezone.
 - `wallets`: a JSON list.
 
-Unknown or missing top-level fields are rejected. Schema version must be a JSON integer, not a boolean.
+Unknown/missing fields are rejected. JSON booleans are not accepted where integers are required.
 
 ### Schema v1
 
-Version 1 is a metadata-only format with an empty `wallets` list. A schema-v1 vault can be opened and checked by the current reader. It cannot contain wallet records.
+Schema v1 is metadata-only with an empty wallet list. It remains readable by the current document reader but cannot contain wallet records.
 
 ### Schema v2
 
-Version 2 supports Bitcoin Mainnet wallet records. Each record contains exactly:
+Schema v2 supports Bitcoin Mainnet wallet records only. Each record contains:
 
 - `wallet_id`: canonical lowercase UUID.
 - `label`: validated display label.
 - `network`: `bitcoin-mainnet`.
-- `address`: first Mainnet native-SegWit P2WPKH address in the supported `bc1q...` format.
-- `derivation_path`: currently fixed to `m/84'/0'/0'/0/0`.
-- `created_at`: ISO 8601 timestamp including timezone.
-- `mnemonic`: normalized lowercase English BIP-39 words, 12 or 24 words.
+- `address`: the implemented first Mainnet Native SegWit P2WPKH address.
+- `derivation_path`: `m/84'/0'/0'/0/0`.
+- `created_at`: ISO 8601 timestamp with timezone.
+- `mnemonic`: normalized English BIP-39 recovery phrase with 12 or 24 words.
 
-Duplicate wallet IDs and duplicate addresses are rejected. This initial schema does not support arbitrary account paths, other networks, BIP-39 languages, or non-empty BIP-39 passphrases.
+Duplicate IDs and duplicate addresses are rejected. The current schema does not support EVM or Monero wallet records, other Bitcoin derivation paths, other BIP-39 languages, or non-empty BIP-39 passphrases.
 
-## Schema migration
+## EVM networks do not use this schema yet
 
-Opening or checking a v1 vault does not migrate it. When a wallet is added, the storage layer prepares and validates the new document, changes `schema_version` to 2, encrypts it, and atomically replaces the file. If the write fails, the prior file should remain intact according to the intended atomic-write path; filesystem and platform behavior still deserve additional cross-platform testing.
+Version 0.6.0 only performs read-only EVM JSON-RPC balance queries for its five explicit mainnet profiles. It neither generates EVM keys nor stores EVM wallet records. A schema migration is required before any EVM wallet secrets can be added safely.
 
-Always create a backup before experimenting with new builds or storage migrations. The current implementation has no general-purpose downgrade/export migration command.
+## Migration
 
-## Wallet secret storage
+Opening or checking a v1 vault does not migrate it. Adding a Bitcoin wallet prepares and validates a new document, upgrades it to schema v2, encrypts it, and performs an atomic replacement. Make a backup before testing migrations. There is no general-purpose downgrade/export migration command.
 
-Recovery phrases are in the JSON document but only inside the authenticated encrypted payload at rest. `list_wallets()` returns public `WalletSummary` data and does not return a mnemonic. The explicit `wallet recovery-phrase` command separately asks the user to confirm and unlock the vault before displaying it.
+## Wallet-secret handling
 
-This does not protect against an attacker who can read the phrase while it is displayed, inspect a compromised process, obtain the password and vault, or compromise the machine. Python does not guarantee secret zeroization.
+Bitcoin recovery phrases exist inside the JSON document only within the authenticated encrypted payload at rest. Normal `list_wallets()` summaries omit mnemonics. `wallet recovery-phrase` separately asks for confirmation and the vault password before displaying the phrase.
+
+This does not protect against malware, compromised terminals, screenshots, process-memory inspection, or an attacker who has the recovery phrase. Python does not guarantee secret zeroization.
 
 ## Backups
 
-Backups are byte-for-byte copies of the encrypted source file. The copy helper checks file size and the `VSHV` marker, but it does not decrypt the source or prove that the password is correct. Run `vaultsh vault check` against the restored copy to authenticate and validate it.
+Backups are byte-for-byte copies of the encrypted vault. Backup creation does not decrypt the source or verify the password. After restoring, run `vaultsh vault check` with the password. Keep a copy offline and protect it separately from the recovery phrase.
 
 ## Compatibility policy
 
-There is no stable backward-compatibility promise in pre-alpha. Any change to the envelope or document schema must include:
-
-1. A written format change and migration/downgrade policy.
-2. Tests for old and new formats plus malformed inputs.
-3. Tests ensuring secret fields never leak in public summaries or raw plaintext exports.
-4. Changelog and security documentation updates.
-5. Independent review before the format is used with real funds.
+There is no stable compatibility promise while pre-alpha. Any future schema/envelope change must include a written migration strategy, old/new/malformed-format tests, checks for secret leakage, changelog/docs updates, and independent review before real-funds use.

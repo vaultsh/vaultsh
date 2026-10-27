@@ -1,13 +1,15 @@
 """Vaultsh command-line interface.
 
 The CLI provides encrypted vault management, offline Bitcoin Mainnet wallet
-creation/recovery, and an explicitly authorized read-only Esplora balance lookup.
+creation/recovery, and explicitly authorized read-only Bitcoin/EVM network queries.
 It does not sign transactions or broadcast payments.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import typer
 from rich.console import Console
@@ -18,8 +20,18 @@ from rich.table import Table
 from vaultsh import __version__
 from vaultsh.config import AppConfig, ConfigError, load_config
 from vaultsh.networks.base import NetworkError
-from vaultsh.networks.bitcoin.client import BitcoinEsploraClient, format_btc
+from vaultsh.networks.bitcoin.client import (
+    BitcoinAddressTransaction,
+    BitcoinEsploraClient,
+    format_btc,
+)
 from vaultsh.networks.bitcoin.wallet import generate_mnemonic
+from vaultsh.networks.ethereum.client import (
+    EVM_NETWORKS,
+    EvmJsonRpcClient,
+    format_native_asset,
+    get_evm_network_profile,
+)
 from vaultsh.privacy.network_policy import NetworkAccessDenied, require_network_access
 from vaultsh.storage.backup import create_backup, restore_backup
 from vaultsh.storage.vault_document import (
@@ -54,6 +66,18 @@ bitcoin_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(bitcoin_app, name="bitcoin")
+ethereum_app = typer.Typer(
+    name="ethereum",
+    help="Read-only Ethereum Mainnet queries using an explicitly selected JSON-RPC endpoint.",
+    no_args_is_help=True,
+)
+app.add_typer(ethereum_app, name="ethereum")
+evm_app = typer.Typer(
+    name="evm",
+    help="Read-only native-asset queries for explicitly supported EVM mainnets.",
+    no_args_is_help=True,
+)
+app.add_typer(evm_app, name="evm")
 console = Console()
 
 
@@ -72,7 +96,9 @@ def main(ctx: typer.Context) -> None:
     table.add_row("[bold cyan]wallet create[/]  Create a Bitcoin Mainnet wallet")
     table.add_row("[bold cyan]wallet recover[/] Recover a wallet from a BIP-39 phrase")
     table.add_row("[bold cyan]wallet list[/]    List public wallet details in a vault")
-    table.add_row("[bold cyan]bitcoin balance[/] Read address balance via explicit Esplora API")
+    table.add_row("[bold cyan]bitcoin balance/history[/] Read-only BTC queries via explicit Esplora API")
+    table.add_row("[bold cyan]ethereum balance[/] Read-only Ethereum ETH balance via explicit JSON-RPC endpoint")
+    table.add_row("[bold cyan]evm balance[/] Read native ETH/POL on supported EVM mainnets")
     table.add_row("[bold cyan]networks[/]       Supported and planned adapters")
     table.add_row("[bold cyan]privacy[/]        Privacy defaults")
     table.add_row("[bold cyan]config[/]         Default non-secret configuration")
@@ -85,9 +111,9 @@ def main(ctx: typer.Context) -> None:
         )
     )
     console.print(
-        "[yellow]PRE-ALPHA:[/] Offline Bitcoin wallet derivation and explicitly authorized "
-        "read-only balance lookup are available. Transaction signing and broadcasting are "
-        "not implemented; do not use this build for real funds."
+        "[yellow]PRE-ALPHA:[/] Offline Bitcoin wallet derivation plus explicitly authorized "
+        "read-only Bitcoin balance/history and selected EVM native-balance queries are available. "
+        "Transaction signing and broadcasting are not implemented; do not use this build for real funds."
     )
     console.print("Run [cyan]vaultsh --help[/] to see commands.")
 
@@ -98,14 +124,15 @@ def about() -> None:
     message = "\n\n".join(
         [
             "Vaultsh is a Python-first, privacy-focused multi-chain wallet project.",
-            "Implemented: encrypted vaults and backups, Bitcoin Mainnet BIP-39 phrase "
-            "generation/recovery, first BIP-84 Native SegWit receiving-address derivation, "
-            "and encrypted wallet-record storage. A read-only balance lookup is available "
-            "through a user-selected Esplora-compatible endpoint when networking is explicitly "
-            "enabled.",
-            "Not implemented: address-gap discovery, transaction construction/signing/"
-            "broadcasting, Ethereum, or Monero. The balance lookup sends the address to the "
-            "chosen endpoint.",
+            "Implemented: encrypted vaults and backups, Bitcoin Mainnet BIP-39/BIP-84 wallet "
+            "creation and recovery, address-scoped Bitcoin balance/history queries through "
+            "Esplora, and read-only native asset balances on Ethereum Mainnet, Polygon PoS, "
+            "Arbitrum One, Optimism, and Base via JSON-RPC. Every remote query requires both "
+            "configuration permission and --allow-network.",
+            "Not implemented: EVM wallet key derivation/storage, ERC-20 tokens, Monero, "
+            "wallet-wide address discovery, transaction construction/signing/broadcasting, or "
+            "Tor transport. Read-only queries disclose addresses and connection metadata to "
+            "the selected endpoint.",
             "This pre-alpha build is not suitable for real funds.",
         ]
     )
@@ -114,15 +141,16 @@ def about() -> None:
 
 @app.command()
 def networks() -> None:
-    """Show planned network integrations and their status."""
+    """Show implemented read-only profiles and planned network integrations."""
     table = Table(title="Network adapter roadmap")
     table.add_column("Network", style="cyan")
     table.add_column("Status")
-    table.add_row(
-        "Bitcoin Mainnet",
-        "BIP-39/BIP-84 offline; read-only Esplora balance lookup (explicit opt-in)",
-    )
-    table.add_row("Ethereum / EVM", "Planned — not implemented")
+    table.add_row("Bitcoin Mainnet", "Offline BIP-39/BIP-84; read-only Esplora balance + address history")
+    for key, profile in EVM_NETWORKS.items():
+        table.add_row(
+            profile.name,
+            f"Read-only native {profile.asset_symbol} balance (chain ID {profile.chain_id}); no wallet keys",
+        )
     table.add_row("Monero", "Planned — not implemented")
     console.print(table)
 
@@ -142,11 +170,11 @@ def privacy() -> None:
     console.print(table)
     console.print(
         "[yellow]Note:[/] Vaultsh does not guarantee anonymity. Wallet creation/recovery are "
-        "local/offline. The optional Bitcoin balance command contacts only the endpoint "
-        "explicitly supplied by the user, and only after both configuration and command-line "
-        "opt-in. The endpoint can associate an address with connection metadata. Tor transport "
-        "is not implemented; this command refuses to "
-        "connect if tor_enabled is true rather than implying traffic is protected by Tor."
+        "local/offline. The Bitcoin balance/history and EVM balance commands contact only "
+        "the endpoint explicitly supplied by the user, after both configuration and command-line "
+        "opt-in. The endpoint can associate queried addresses with connection metadata. Tor "
+        "transport is not implemented; these commands refuse direct connections when "
+        "tor_enabled is true rather than implying traffic is protected by Tor."
     )
 
 
@@ -493,10 +521,186 @@ def bitcoin_balance(
     )
     console.print(table)
     console.print(f"Address: {escape(balance.address)}")
-    console.print(f"Source: {escape(endpoint)}")
+    source_host = urlsplit(client.endpoint).hostname or "configured endpoint"
+    console.print(f"Source host: {escape(source_host)}")
     console.print(
         "[dim]Read-only third-party/node data; it is not a transaction capability or a "
         "proof of ownership.[/]"
+    )
+
+
+@bitcoin_app.command("history")
+def bitcoin_history(
+    address: str = typer.Argument(..., help="Bitcoin Mainnet address to query."),
+    endpoint: str = typer.Option(..., "--endpoint", help="Explicit Esplora API base URL."),
+    config_path: Path = typer.Option(..., "--config", help="TOML config enabling network requests."),
+    allow_network: bool = typer.Option(
+        False,
+        "--allow-network",
+        help="Explicitly authorize address history lookup and metadata exposure.",
+    ),
+    limit: int = typer.Option(10, "--limit", min=1, max=25, help="Maximum first-page rows (1-25)."),
+) -> None:
+    """Fetch a limited, newest-first transaction history for one Bitcoin address."""
+    try:
+        settings = load_config(config_path)
+        require_network_access(
+            explicitly_requested=allow_network,
+            configured=settings.network_requests_enabled,
+        )
+        if settings.tor_enabled:
+            raise NetworkAccessDenied(
+                "Tor is enabled in config, but Tor transport is not implemented. "
+                "No direct connection was made."
+            )
+        client = BitcoinEsploraClient(endpoint, timeout_seconds=settings.request_timeout_seconds)
+    except (ConfigError, OSError, NetworkAccessDenied, NetworkError, ValueError) as exc:
+        console.print(f"[red]Bitcoin history lookup failed:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        "[yellow]Privacy notice:[/] This sends the address to your selected endpoint. "
+        "Tor routing is not implemented."
+    )
+    try:
+        transactions = client.get_address_transactions(address, limit=limit)
+    except NetworkError as exc:
+        console.print(f"[red]Bitcoin history lookup failed:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+    if not transactions:
+        console.print("[dim]No transactions were returned for this address.[/]")
+        return
+    table = Table(title="Bitcoin Mainnet — address transaction history", show_header=True)
+    table.add_column("Transaction ID", style="cyan")
+    table.add_column("Status")
+    table.add_column("Block height")
+    table.add_column("Block time (UTC)")
+    table.add_column("Fee (BTC)", justify="right")
+    for transaction in transactions:
+        table.add_row(
+            transaction.txid,
+            "Confirmed" if transaction.confirmed else "Unconfirmed",
+            str(transaction.block_height) if transaction.block_height is not None else "—",
+            _format_block_time(transaction),
+            format_btc(transaction.fee_sats) if transaction.fee_sats is not None else "—",
+        )
+    console.print(table)
+    console.print(
+        "[dim]This is the first page for one address, not full wallet history. "
+        "Results are provider-supplied and not independently verified.[/]"
+    )
+
+
+def _format_block_time(transaction: BitcoinAddressTransaction) -> str:
+    if transaction.block_time is None:
+        return "—"
+    try:
+        return datetime.fromtimestamp(transaction.block_time, tz=UTC).isoformat(timespec="seconds")
+    except (OverflowError, OSError, ValueError):
+        return "Invalid timestamp"
+
+
+@ethereum_app.command("balance")
+def ethereum_balance(
+    address: str = typer.Argument(..., help="Ethereum Mainnet 0x-prefixed account address."),
+    endpoint: str = typer.Option(..., "--endpoint", help="Explicit Ethereum Mainnet JSON-RPC endpoint."),
+    config_path: Path = typer.Option(..., "--config", help="TOML config enabling network requests."),
+    allow_network: bool = typer.Option(
+        False,
+        "--allow-network",
+        help="Explicitly authorize this address lookup and its metadata exposure.",
+    ),
+) -> None:
+    """Fetch native ETH balance from Ethereum Mainnet."""
+    _run_evm_balance(
+        address=address,
+        endpoint=endpoint,
+        config_path=config_path,
+        allow_network=allow_network,
+        chain_key="ethereum",
+    )
+
+
+@evm_app.command("balance")
+def evm_balance(
+    address: str = typer.Argument(..., help="EVM account address (0x plus 40 hexadecimal characters)."),
+    chain: str = typer.Option(
+        "ethereum",
+        "--chain",
+        help="Supported mainnet: ethereum, polygon, arbitrum, optimism, or base.",
+        case_sensitive=False,
+    ),
+    endpoint: str = typer.Option(..., "--endpoint", help="Explicit JSON-RPC endpoint for the chosen chain."),
+    config_path: Path = typer.Option(..., "--config", help="TOML config enabling network requests."),
+    allow_network: bool = typer.Option(
+        False,
+        "--allow-network",
+        help="Explicitly authorize this address lookup and its metadata exposure.",
+    ),
+) -> None:
+    """Fetch a supported EVM network's native asset balance at the latest block."""
+    _run_evm_balance(
+        address=address,
+        endpoint=endpoint,
+        config_path=config_path,
+        allow_network=allow_network,
+        chain_key=chain,
+    )
+
+
+def _run_evm_balance(
+    *, address: str, endpoint: str, config_path: Path, allow_network: bool, chain_key: str
+) -> None:
+    """Shared fail-closed read-only EVM balance path for both CLI command groups."""
+    try:
+        profile = get_evm_network_profile(chain_key)
+        settings = load_config(config_path)
+        require_network_access(
+            explicitly_requested=allow_network,
+            configured=settings.network_requests_enabled,
+        )
+        if settings.tor_enabled:
+            raise NetworkAccessDenied(
+                "Tor is enabled in config, but Tor transport is not implemented. "
+                "No direct connection was made."
+            )
+        client = EvmJsonRpcClient(
+            endpoint,
+            timeout_seconds=settings.request_timeout_seconds,
+            expected_chain_id=profile.chain_id,
+            network_name=profile.name,
+            asset_symbol=profile.asset_symbol,
+        )
+    except (ConfigError, OSError, NetworkAccessDenied, NetworkError, ValueError) as exc:
+        console.print(f"[red]EVM balance lookup failed:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        "[yellow]Privacy notice:[/] This sends the address to your selected JSON-RPC endpoint. "
+        "It can observe connection metadata; Vaultsh does not route through Tor."
+    )
+    try:
+        balance = client.get_address_balance(address)
+    except NetworkError as exc:
+        console.print(f"[red]EVM balance lookup failed:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+    table = Table(title=f"{balance.network_name} address balance", show_header=True)
+    table.add_column("Measure", style="cyan")
+    table.add_column("Value", justify="right")
+    table.add_row(
+        f"Native {balance.asset_symbol} balance at latest block",
+        format_native_asset(balance.balance_base_units),
+    )
+    base_unit_name = "wei" if balance.asset_symbol == "ETH" else "base units"
+    table.add_row(base_unit_name, str(balance.balance_base_units))
+    table.add_row("Chain ID", str(balance.chain_id))
+    console.print(table)
+    console.print(f"Address: {escape(balance.address)}")
+    host = urlsplit(client.endpoint).hostname or "configured endpoint"
+    console.print(f"RPC host: {escape(host)}")
+    console.print(
+        "[dim]This is a provider-supplied read-only result, not a proof of ownership. "
+        "Vaultsh does not derive EVM private keys, query ERC-20 token balances, or send transactions.[/]"
     )
 
 

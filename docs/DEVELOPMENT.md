@@ -1,99 +1,64 @@
 # Development and testing
 
-This page describes the local workflow for Vaultsh contributors. The project targets Python 3.12+ and uses a `src/` layout.
+This guide describes the local workflow for Vaultsh **0.6.0**. A passing test suite is useful evidence, not a security certification.
 
-## Environment setup
+## Requirements
 
-From the project root:
+- Python 3.12 or newer.
+- `pip` and a virtual environment.
+- Internet access or a trusted package mirror for installing project dependencies.
+- Git is recommended for reviewing diffs and release history.
+
+## Set up the environment
+
+From the repository root:
 
 ```bash
 python -m venv .venv
-```
-
-Activate the environment, then install the project and development dependencies:
-
-```bash
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# Linux/macOS/Termux: source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Windows PowerShell activation:
+The runtime dependencies include Typer, Rich, cryptography, `embit`, `eth-utils`, and `eth-hash[pycryptodome]`. The development extra contains pytest, pytest-cov, Ruff, and mypy.
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Linux/macOS/Termux-style activation:
+## Run tests
 
 ```bash
-source .venv/bin/activate
-```
-
-The editable installation exposes the `vaultsh` console script. `python -m vaultsh` is also intended to start the CLI.
-
-## Tests
-
-Run all tests:
-
-```bash
-pytest
-```
-
-Run with coverage:
-
-```bash
+pytest -q
 pytest --cov=vaultsh --cov-report=term-missing
-```
 
-Tests should use temporary directories, deterministic public test vectors, fake prompts where feasible, and synthetic secrets only. Never include genuine recovery phrases or wallet data in fixtures.
 
-The BIP-84 address-vector test depends on `embit`. Install all project dependencies before interpreting skipped wallet tests as a successful complete run. A test skipped because a dependency is missing is not a pass for that feature.
+Tests use fake HTTP openers and synthetic JSON-RPC/Esplora responses. They do not need a running node and should not access live endpoints. Bitcoin derivation tests require `embit`; EVM mixed-case EIP-55 checksum tests require `eth-utils` with a Keccak backend. Install project dependencies before expecting those tests to run instead of skip.
 
-## Static checks
+## Quality checks
 
 ```bash
 ruff check .
+ruff format --check .
 mypy src/vaultsh
-```
-
-Also review the changed lines and whitespace:
-
-```bash
-git diff --check
-git status --short
-git diff
-```
-
-A local test run does not replace CI on each supported platform. Windows, Linux, and Termux need separate compatibility verification before being claimed as tested targets.
-
-## Tests by subsystem
-
-- `test_cli.py`: user-facing command behavior, prompts, exit codes, and output safety.
-- `test_config.py`: TOML parsing, type checks, ranges, and privacy defaults.
-- `test_encryption.py`: envelope round-trip, authentication failure, and malformed headers/KDF parameters.
-- `test_vault.py` and `test_vault_document.py`: file safety, document validation, schema support, and migrations.
-- `test_wallet_store.py`: record persistence, duplicate rejection, and secret redaction from public summaries.
-- `test_bitcoin_wallet.py`: BIP-39 validity and authoritative BIP-84 derivation test vectors.
-- `test_derivation.py`: parsing only; this module does not derive private keys.
-- `test_bitcoin_client.py` and `test_bitcoin_cli.py`: mocked Esplora responses, URL/response validation, balance arithmetic, explicit network opt-in, and CLI output; they do not contact a live endpoint.
-- `test_network_policy.py` and `test_tor.py`: policy decisions and proxy-setting validation; they do not prove live Tor networking or anonymity.
-
-## Safe change principles
-
-- Do not implement a custom hash, cipher, mnemonic word list, elliptic-curve operation, or transaction-signing primitive when a well-maintained standard library is appropriate.
-- Keep network access opt-in and independently tested. No background network activity or telemetry should be introduced implicitly.
-- Keep chain-specific logic isolated per adapter.
-- Add failure-path tests, schema compatibility tests, and authoritative vectors for cryptographic behavior.
-- Update README, the detailed docs, SECURITY.md, and CHANGELOG.md when relevant.
-- Bump version metadata in both `pyproject.toml` and `src/vaultsh/__init__.py` when preparing a release.
-
-## Build/package check
-
-The project uses Hatchling. To verify that the package builds, install the build frontend and run:
-
-```bash
-python -m pip install build
+python -m compileall -q src tests
 python -m build
 ```
 
-Review the contents of `dist/` before distributing an artifact. Do not package local vaults, backups, environment files, test caches, or credentials.
+The local result report lives in [TEST_RESULTS.md](TEST_RESULTS.md). It records the actual environment and any skipped tests; it must be regenerated after code/dependency changes. Do not replace missing tooling with claims of success.
+
+## Test design
+
+- Prefer deterministic unit tests and official standard vectors for derivation/checksum logic.
+- Inject fake openers into network clients rather than querying public services during tests.
+- Verify network commands fail closed when config permission or `--allow-network` is missing, and when Tor is requested but unavailable.
+- Test malformed response JSON, wrong JSON-RPC IDs, incorrect chain IDs, invalid quantities, oversized responses, redirects, and endpoint URL edge cases.
+- Never use real recovery phrases, live private keys, live vault files, or user data in fixtures.
+- Do not assert that an address balance is a complete wallet balance unless address discovery and gap-limit handling have actually been implemented.
+
+## Before publishing a release
+
+1. Update `__version__`, `pyproject.toml`, `CHANGELOG.md`, README, and all affected docs together.
+2. Install all project dependencies and run the complete test suite, ensuring tests did not silently skip key vectors.
+3. Run Ruff, mypy, the package build, and the OS/Python matrix CI.
+4. Inspect `git diff --check`, `git status --short`, archive contents, and dependency changes.
+5. Confirm the archive excludes caches, `.coverage`, secrets, vault files, backups, and local config.
+6. Document failures, skips, unverified environments, and unresolved security issues explicitly.
+7. Never imply the application is suitable for real funds without independent review and documented release gates.

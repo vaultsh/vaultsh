@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -20,6 +21,18 @@ from vaultsh.networks.base import NetworkError
 MAX_RESPONSE_BYTES = 1_000_000
 MAX_MONEY_SATS = 21_000_000 * 100_000_000
 MAX_COUNTER_SATS = (1 << 127) - 1
+_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
+
+
+@dataclass(frozen=True, slots=True)
+class BitcoinAddressTransaction:
+    """A validated public transaction summary returned by Esplora."""
+
+    txid: str
+    confirmed: bool
+    block_height: int | None
+    block_time: int | None
+    fee_sats: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,7 +202,7 @@ class BitcoinEsploraClient:
             method="GET",
             headers={
                 "Accept": "application/json",
-                "User-Agent": "Vaultsh/0.4.5",
+                "User-Agent": "Vaultsh/0.6.0",
             },
         )
         try:
@@ -234,3 +247,90 @@ class BitcoinEsploraClient:
             confirmed_sats=confirmed,
             unconfirmed_sats=unconfirmed,
         )
+
+
+    def get_address_transactions(
+        self, address: str, *, limit: int = 10
+    ) -> tuple[BitcoinAddressTransaction, ...]:
+        """Fetch a bounded, newest-first transaction summary for one Mainnet address.
+
+        This is address-scoped history, not a complete wallet history. Esplora's
+        address endpoint has pagination and result limits; this method returns at
+        most ``limit`` entries from the first response page.
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 25:
+            raise NetworkError("Transaction history limit must be an integer from 1 to 25")
+        _validate_mainnet_address(address)
+        path_address = quote(address, safe="")
+        url = f"{self.endpoint}/address/{path_address}/txs"
+        request = Request(
+            url,
+            method="GET",
+            headers={"Accept": "application/json", "User-Agent": "Vaultsh/0.6.0"},
+        )
+        try:
+            with self._opener.open(request, timeout=self.timeout_seconds) as response:
+                raw = response.read(self.max_response_bytes + 1)
+        except HTTPError as exc:
+            if 300 <= exc.code < 400:
+                raise NetworkError(
+                    "Esplora endpoint returned a redirect; redirects are disabled for privacy"
+                ) from exc
+            raise NetworkError(f"Esplora request failed with HTTP status {exc.code}") from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            raise NetworkError(
+                "Esplora request failed; check the endpoint and network connection"
+            ) from exc
+        if len(raw) > self.max_response_bytes:
+            raise NetworkError("Esplora response exceeded the configured size limit")
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise NetworkError("Esplora endpoint returned invalid JSON") from exc
+        if not isinstance(payload, list):
+            raise NetworkError("Esplora transaction endpoint returned an unexpected format")
+        if len(payload) > 1000:
+            raise NetworkError("Esplora transaction response contains too many entries")
+
+        transactions: list[BitcoinAddressTransaction] = []
+        seen_txids: set[str] = set()
+        for item in payload[:limit]:
+            if not isinstance(item, dict):
+                raise NetworkError("Esplora transaction entry must be an object")
+            txid = item.get("txid")
+            if not isinstance(txid, str) or not _TXID_PATTERN.fullmatch(txid):
+                raise NetworkError("Esplora transaction entry has an invalid transaction ID")
+            txid = txid.lower()
+            if txid in seen_txids:
+                raise NetworkError("Esplora transaction response contains duplicate transaction IDs")
+            seen_txids.add(txid)
+            status = item.get("status")
+            if not isinstance(status, dict) or not isinstance(status.get("confirmed"), bool):
+                raise NetworkError("Esplora transaction entry has an invalid status")
+            confirmed = status["confirmed"]
+            block_height: int | None = None
+            block_time: int | None = None
+            if confirmed:
+                height = status.get("block_height")
+                timestamp = status.get("block_time")
+                if (
+                    isinstance(height, bool) or not isinstance(height, int) or height < 0
+                    or isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp < 0
+                ):
+                    raise NetworkError("Confirmed transaction is missing valid block metadata")
+                block_height, block_time = height, timestamp
+            fee = item.get("fee")
+            if fee is not None and (
+                isinstance(fee, bool) or not isinstance(fee, int) or not 0 <= fee <= MAX_MONEY_SATS
+            ):
+                raise NetworkError("Esplora transaction entry has an invalid fee")
+            transactions.append(
+                BitcoinAddressTransaction(
+                    txid=txid,
+                    confirmed=confirmed,
+                    block_height=block_height,
+                    block_time=block_time,
+                    fee_sats=fee,
+                )
+            )
+        return tuple(transactions)
