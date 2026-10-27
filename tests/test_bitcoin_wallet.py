@@ -53,3 +53,29 @@ def test_invalid_phrase_is_not_reported_with_input_echo() -> None:
     with pytest.raises(BitcoinWalletError, match="Invalid BIP-39") as exc_info:
         derive_first_receive_address(bad_phrase)
     assert bad_phrase not in str(exc_info.value)
+
+
+def test_bitcoin_payment_signs_a_local_p2wpkh_transaction_without_broadcasting() -> None:
+    pytest.importorskip("embit")
+    from vaultsh.networks.bitcoin.transfer import prepare_bitcoin_transfer
+    from vaultsh.networks.bitcoin.wallet import derive_first_receive_address
+
+    mnemonic_a = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    mnemonic_b = "test test test test test test test test test test test junk"
+    sender = derive_first_receive_address(mnemonic_a).address
+    destination = derive_first_receive_address(mnemonic_b).address
+    preview = prepare_bitcoin_transfer(
+        mnemonic=mnemonic_a,
+        expected_sender=sender,
+        destination=destination,
+        amount="0.001",
+        utxos=[{"txid": "11" * 32, "vout": 0, "value": 1_000_000}],
+        fee_rate_sat_vb=1,
+        max_fee_sats=1_000,
+    )
+    assert preview.sender == sender
+    assert preview.destination == destination
+    assert preview.amount_sats == 100_000
+    assert preview.raw_transaction_hex
+    assert len(preview.raw_transaction_hex) % 2 == 0
+    assert preview.fee_sats <= 1_000

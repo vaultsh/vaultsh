@@ -216,7 +216,7 @@ class EvmJsonRpcClient:
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/json",
-                "User-Agent": "Vaultsh/0.6.0",
+                "User-Agent": "Vaultsh/1.0.0b1",
             },
         )
         try:

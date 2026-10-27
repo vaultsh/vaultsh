@@ -1,15 +1,6 @@
-# Konfiguracja
+# Konfiguracja — Vaultsh 1.0.0-beta.1
 
-**🌐 Język:** [English](../CONFIGURATION.md) · [Polski](CONFIGURATION.md) · [Русский](../ru/CONFIGURATION.md) · [README](../../README.pl.md)
-
-## Utworzenie i walidacja konfiguracji
-
-```bash
-vaultsh config-init ./vaultsh.toml
-vaultsh config-check ./vaultsh.toml
-```
-
-Przykładowy plik:
+`vaultsh config-init ./vaultsh.toml` tworzy konfigurację bez sekretów, a `vaultsh config-check ./vaultsh.toml` sprawdza jej poprawność. Nie zapisuj tu haseł, fraz odzyskiwania, kluczy prywatnych, tokenów API ani haseł Monero RPC.
 
 ```toml
 [app]
@@ -20,22 +11,12 @@ tor_enabled = false
 request_timeout_seconds = 15.0
 ```
 
-## Ustawienia
+| Ustawienie | Domyślnie | Znaczenie |
+|---|---|---|
+| `app_name` | `vaultsh` | Nazwa wyświetlana/metadane |
+| `telemetry_enabled` | `false` | Telemetria nie jest zaimplementowana |
+| `network_requests_enabled` | `false` | Zezwolenie na endpointy i lokalne Monero RPC |
+| `tor_enabled` | `false` | Transport Tor nie istnieje; `true` blokuje operacje sieciowe |
+| `request_timeout_seconds` | `15.0` | Timeout 0,1–300 s |
 
-| Klucz | Typ | Domyślnie | Znaczenie |
-|---|---|---|---|
-| `app_name` | tekst | `"vaultsh"` | Niepusta, przycięta nazwa aplikacji. |
-| `telemetry_enabled` | bool | `false` | Telemetria jest wyłączona; aplikacja nie ma nadawcy analityki. |
-| `network_requests_enabled` | bool | `false` | Zgoda konfiguracyjna na zapytania Bitcoin/EVM tylko do odczytu. |
-| `tor_enabled` | bool | `false` | Gdy `true`, polecenia sieciowe odmawiają bezpośredniego połączenia, bo transport Tor nie działa. |
-| `request_timeout_seconds` | liczba | `15.0` | Timeout pojedynczego zapytania; dozwolony zakres 0.1–300 sekund. |
-
-## Podwójna zgoda na sieć
-
-Aby wykonać zapytanie, muszą jednocześnie wystąpić dwa warunki: `network_requests_enabled = true` w pliku wybranym przez `--config` oraz flaga `--allow-network`. Brak któregokolwiek z nich blokuje połączenie. Samo ustawienie `tor_enabled` nie uruchamia Tor.
-
-## Reguły endpointów i prywatność
-
-Zdalne endpointy muszą używać HTTPS. Zwykłe HTTP jest dostępne wyłącznie dla localhost lub adresów loopback, np. lokalnego węzła. Odrzucane są dane logowania w URL, query string, fragmenty, znaki kontrolne i segmenty ścieżki `.`/`..`. Przekierowania nie są śledzone, a proxy z otoczenia nie są automatycznie używane. Endpoint jest podawany przy każdym poleceniu i nie jest zapisywany w `AppConfig`.
-
-Endpoint otrzymuje sprawdzany publiczny adres i może powiązać go z metadanymi połączenia. Tor nie jest obsługiwany. Niektóre RPC umieszczają token w ścieżce URL — traktuj go jak sekret i nie publikuj w zgłoszeniach, logach ani zrzutach ekranu.
+Każde połączenie wymaga ustawienia `network_requests_enabled = true` i flagi `--allow-network`; endpoint podawany jest jawnie. Dostawca może zobaczyć publiczny adres i metadane sieciowe. XMR RPC domyślnie używa `http://127.0.0.1:18082/json_rpc` i klient odrzuca URL-e nie-loopback. Nie wystawiaj RPC na interfejs publiczny.

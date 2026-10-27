@@ -54,7 +54,7 @@ def test_add_wallet_stores_phrase_only_inside_encrypted_container(
     assert summary.derivation_path == "m/84'/0'/0'/0/0"
 
     public_document = read_vault_document(path, PASSWORD)
-    assert public_document.schema_version == 2
+    assert public_document.schema_version == 3
     assert public_document.wallet_count == 1
     assert MNEMONIC.encode() not in path.read_bytes()
 
@@ -81,7 +81,7 @@ def test_duplicate_wallet_address_is_rejected_without_changing_file(
     assert path.read_bytes() == before
 
 
-def test_adding_wallet_migrates_schema_v1_to_v2(
+def test_adding_wallet_migrates_schema_v1_to_v3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import vaultsh.storage.wallet_store as wallet_store
@@ -93,7 +93,7 @@ def test_adding_wallet_migrates_schema_v1_to_v2(
 
     add_bitcoin_wallet(path, PASSWORD, label="Imported", mnemonic=MNEMONIC)
     migrated = read_vault_document(path, PASSWORD)
-    assert migrated.schema_version == 2
+    assert migrated.schema_version == 3
     assert migrated.wallet_count == 1
 
 

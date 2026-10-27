@@ -203,3 +203,43 @@ def test_supported_evm_profiles_enforce_expected_chain(
 def test_unknown_evm_network_is_rejected_without_guessing() -> None:
     with pytest.raises(NetworkError, match="Unsupported EVM network"):
         get_evm_network_profile("fantasy-chain")
+
+
+def test_evm_transfer_is_signed_locally_and_not_broadcast_by_prepare(monkeypatch) -> None:
+    pytest.importorskip("eth_account")
+    from eth_account import Account
+    from vaultsh.networks.ethereum.transfer import prepare_evm_transfer
+
+    private_key = bytes.fromhex("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+    expected_sender = Account.from_key(private_key).address
+    monkeypatch.setattr("vaultsh.networks.ethereum.transfer.derive_evm_private_key", lambda _mnemonic: private_key)
+
+    class FakeRpc:
+        def __init__(self):
+            self.calls = []
+        def _rpc_call(self, method, params, request_id):
+            self.calls.append(method)
+            return {
+                "eth_chainId": "0x1",
+                "eth_getTransactionCount": "0x0",
+                "eth_gasPrice": "0x3b9aca00",
+                "eth_getBalance": "0x4563918244f40000",
+                "eth_estimateGas": "0x5208",
+            }[method]
+
+    fake = FakeRpc()
+    preview = prepare_evm_transfer(
+        endpoint="https://rpc.example",
+        network="ethereum",
+        mnemonic="test test test test test test test test test test test junk",
+        expected_sender=expected_sender,
+        destination="0x000000000000000000000000000000000000dead",
+        amount="0.01",
+        max_fee_native="0.001",
+        client=fake,
+    )
+    assert preview.sender.lower() == expected_sender.lower()
+    assert preview.amount_base_units == 10**16
+    assert preview.chain_id == 1
+    assert preview.raw_signed_transaction.startswith("0x")
+    assert "eth_sendRawTransaction" not in fake.calls

@@ -15,10 +15,10 @@ def test_version_command() -> None:
     assert f"Vaultsh {__version__}" in result.stdout
 
 
-def test_about_command_discloses_pre_alpha_status() -> None:
+def test_about_command_discloses_beta_status() -> None:
     result = runner.invoke(app, ["about"])
     assert result.exit_code == 0
-    assert "pre-alpha" in result.stdout.lower()
+    assert "beta" in result.stdout.lower()
     assert "not implemented" in result.stdout.lower()
 
 
@@ -28,7 +28,7 @@ def test_networks_command_shows_planned_networks() -> None:
     assert "Bitcoin" in result.stdout
     assert "Ethereum" in result.stdout
     assert "Monero" in result.stdout
-    assert "not implemented" in result.stdout.lower()
+    assert "Monero" in result.stdout and "monero-wallet-rpc" in result.stdout
 
 
 def test_privacy_command_discloses_safe_defaults() -> None:
@@ -46,11 +46,11 @@ def test_config_command_shows_non_secret_defaults() -> None:
     assert "false" in result.stdout
 
 
-def test_no_arguments_shows_pre_alpha_warning() -> None:
+def test_no_arguments_shows_beta_warning() -> None:
     result = runner.invoke(app, [])
     assert result.exit_code == 0
     assert "VAULTSH" in result.stdout
-    assert "PRE-ALPHA" in result.stdout
+    assert "BETA" in result.stdout
     assert "vault init" in result.stdout
 
 
@@ -295,8 +295,8 @@ def test_russian_about_command_is_localized() -> None:
     result = runner.invoke(app, ["--lang", "ru", "about"])
     assert result.exit_code == 0
     assert "О Vaultsh" in result.stdout
-    assert "Не реализовано" in result.stdout
-    assert "реальных средств" in result.stdout
+    assert "Ограничения" in result.stdout
+    assert "необратимы" in result.stdout
 
 
 def test_invalid_interface_language_fails_clearly() -> None:
@@ -309,8 +309,8 @@ def test_polish_network_overview_localizes_evm_status() -> None:
     result = runner.invoke(app, ["--lang", "pl", "networks"])
     assert result.exit_code == 0
     assert "Przegląd obsługi sieci" in result.stdout
-    assert "Odczyt natywnego salda" in result.stdout
-    assert "W planach" in result.stdout
+    assert "Saldo natywne" in result.stdout
+    assert "portfel/adres/saldo/wysyłka" in result.stdout
 
 
 def test_russian_privacy_screen_is_localized() -> None:
@@ -319,3 +319,11 @@ def test_russian_privacy_screen_is_localized() -> None:
     assert "Конфиденциальность" in result.stdout
     assert "Телеметрия" in result.stdout
     assert "не гарантирует анонимность" in result.stdout
+
+
+def test_textual_ui_commands_are_available_without_launching_tui() -> None:
+    ui_help = runner.invoke(app, ["ui", "--help"])
+    tui_help = runner.invoke(app, ["tui", "--help"])
+    assert ui_help.exit_code == 0
+    assert tui_help.exit_code == 0
+    assert "Textual" in (ui_help.stdout + tui_help.stdout)

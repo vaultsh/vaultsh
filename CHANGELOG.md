@@ -1,27 +1,88 @@
-# Changelog
-
-All notable changes to Vaultsh are recorded here. Vaultsh is pre-alpha; a version number does not imply production readiness, an audit, or a stable compatibility promise. Dates use `YYYY-MM-DD`.
-
-**🌐 Changelog translations:** [English](CHANGELOG.md) · [Polski](docs/pl/CHANGELOG.md) · [Русский](docs/ru/CHANGELOG.md)
-
-## 🚧 [Unreleased]
+## 🚀 [1.0.0-beta.1] - 2026-10-27
 
 ### ✨ Added
 
-- Added Polish and Russian README files and translated documentation sets, with language links at the top of each README and indexes for both languages.
-- Added `--lang en|pl|ru` for the start dashboard and top-level informational screens.
-- Added clearer grouped command dashboard, first-run quick-start steps, explicit pre-alpha warning, network-permission reminder, and contextual help hints.
-- Added regression tests for localized dashboard, network overview, informational screens, and invalid language handling.
+- Added BIP-39 wallet creation/recovery and encrypted-vault records for Bitcoin Mainnet, Ethereum Mainnet, and Solana Mainnet Beta.
+- Added local Bitcoin Mainnet P2WPKH transaction signing and Esplora broadcast, using confirmed UTXOs at the first receive address, a visible output/fee preview, a maximum-fee cap, and exact typed confirmation.
+- Added local native ETH transaction signing and `eth_sendRawTransaction` broadcast for Ethereum Mainnet only, with chain-ID verification, nonce/gas/balance queries, a maximum-fee cap, and typed confirmation.
+- Added local native SOL transaction construction/signing and Solana Mainnet submission using `solders`, Mainnet genesis-hash validation, balance/fee checks, and typed confirmation.
+- Added Monero wallet creation/open/close, address and balance lookup, and two-step transfer submission through the official local `monero-wallet-rpc`; transfers are prepared with `do_not_relay` and only relayed after typed confirmation.
+- Added Mainnet validation for the current Monero wallet address and corrected the default wallet-RPC port to `127.0.0.1:18082`.
+- Added QR display and PNG export for recognized public BTC, EVM, XMR, and SOL address formats; QR input refuses whitespace/recovery phrases and strings that do not resemble supported public addresses.
+- Added exact decimal parsing for BTC, ETH, SOL, and XMR; transfer preview objects hide raw signed transaction/Monero metadata from their string representation.
+- Added a high-visibility Bitcoin send warning in the CLI for the known first-receive-address/change-discovery limitation.
+- Added transfer amount, QR, mainnet validation, Monero relay-metadata, and CLI regression tests. Chain signing tests are dependency-gated where their crypto dependencies are unavailable.
+- Added Beta 1.0 docs and translated README files in English, Polish, and Russian.
 
 ### 🔄 Changed
 
-- Improved terminal layout with shorter command rows, consistent panel spacing, wider tables, and grouped local-vault/wallet/network/help sections.
-- Updated the recorded local test result to 144 passed, 4 skipped, and 82% measured line coverage.
+- Updated package metadata and runtime version to `1.0.0b1` (human release label: `1.0.0-beta.1`) and marked the project as Beta.
+- Updated command help, dashboards, network capability tables, Textual status messages, and all three READMEs to distinguish implemented transfer paths from read-only network profiles.
+- Replaced unsupported Textual `@media` CSS with Python-driven responsive class toggling for the overview grid.
+- Changed the Monero wallet-RPC default port to the documented local default `18082`; the current wallet address must validate as Mainnet before address/balance display.
+- Tightened QR address-format checks and refreshed the security model, CLI reference, network adapter guide, roadmap, changelog, and test report.
 
-### 🛡️ Notes
+### 🧪 Test results
 
-- Runtime localization currently covers the dashboard and major informational screens. Detailed subcommand help, some prompts, and low-level errors remain English.
-- These changes do not bump the application version; the latest tagged/versioned baseline remains 0.6.0 until a release is explicitly cut.
+- Latest local run: **194 passed, 7 skipped, 53% line coverage** (1,577/2,986 statements) on Python 3.13.5 / Linux (`python -m pytest --cov=vaultsh --cov-report=term-missing -q`).
+- Skips are dependency-gated: Textual UI runtime tests require `textual`; Bitcoin derivation/signing tests require `embit`; EIP-55/ETH-signing tests require `eth-utils` and `eth-account`.
+- Unit tests use fake RPC/Esplora responses. No live node/provider was contacted and no real transaction was broadcast during this release preparation.
+
+### 🛡️ Security notes and limitations
+
+- This is a beta release, not an independently audited wallet. Use disposable wallets and small test amounts only; mainnet transfers are irreversible.
+- **Bitcoin sending has a known funds-discovery limitation:** only the first receive address is scanned for spendable UTXOs. Change is sent to BIP-84 path `m/84'/0'/0'/1/0`, which the current balance/history/send paths do not scan. As a result, change output may become invisible and cannot be spent through Vaultsh yet. Do not use BTC send with real funds until address/change discovery is implemented and verified.
+- Ethereum signing/sending is enabled only for native ETH on chain ID 1, using a legacy `gasPrice` transaction. Other EVM profiles are read-only; ERC-20, EIP-1559, contract calls, token transfers and receipt/finality polling are not implemented.
+- Solana support sends native SOL only. SPL tokens, address discovery, transaction history and confirmation/finality polling are not implemented. A successful `sendTransaction` response is submission acknowledgement, not confirmation.
+- Monero key/seed handling and signing are performed by the official local `monero-wallet-rpc`, not Vaultsh. Monero wallet files/seeds are outside the Vaultsh encrypted vault. Verify daemon/node configuration and never expose wallet-RPC beyond loopback.
+- QR format recognition is not a full checksum verifier for every supported address type. Always compare the decoded QR with the intended public address; QR rejects unrecognized payloads but cannot prove ownership.
+- Network access requires both config permission and `--allow-network`; endpoint operators can see queried addresses and connection metadata. Tor transport is not implemented and is refused when `tor_enabled = true`.
+- Chain dependencies could not all be imported in the isolated build environment, so signed transaction paths and the Textual runtime were not fully executed here. Tests and successful compilation are not a security certification.
+
+---
+
+## 🚧 [Unreleased]
+
+No unreleased changes have been recorded yet.
+
+## 🚀 [0.9.0] - 2026-10-27
+
+### ✨ Added
+
+- Added a full-screen Textual TUI with Overview, Vault & Wallets, Network, Files, and Settings tabs.
+- Added a consistent black-and-orange responsive theme using Textual `Header`, `Footer`, `TabbedContent`, `DataTable`, `Digits`, `DirectoryTree`, `Link`, `Input`, `TextArea`, `Checkbox`, `Select`, `Rule`, buttons, and status panels.
+- Added `vaultsh ui` and `vaultsh tui` launch commands. Interactive terminals launch Textual by default; non-interactive/captured runs retain the Rich dashboard.
+- Added a dynamic Textual header showing the Vaultsh version, a sanitized local OS username, and network permission/request state (`OFF`, `ARMED`, `REQUESTING`, `RESPONSE`, `ERROR`, or `BLOCKED`).
+- Added visual access to local vault creation, encrypted backup/restore, limited offline Bitcoin wallet creation/recovery/listing, read-only network queries, and settings without replacing the existing CLI command paths.
+- Added a path navigator which selects paths but does not display or decrypt vault contents, and links to project and upstream documentation.
+- Added a single-use network consent checkbox in the TUI; every query still requires the TOML permission and a user-selected endpoint.
+- Added headless Textual app tests for all three interface languages, tab mounting, title/state changes, and network-off defaults, plus dependency-free title sanitization tests.
+- Added `pytest-asyncio` to development dependencies so Textual's asynchronous test harness can run after dependencies are installed.
+- Added `docs/INTERFACE.md` and Polish/Russian translations, and updated the three READMEs, roadmap, development guide, security notes, and test report.
+
+### 🔄 Changed
+
+- Updated package and User-Agent version metadata to `0.9.0`.
+- Made Textual the default frontend only for interactive terminals; preserved Rich output for redirected output and automation.
+- Improved network status indicators so numeric `Digits` are paired with readable localized status labels.
+- Added a missing action to apply the selected path from the Files tab to the vault-path field.
+- Updated local testing configuration for automatic asyncio test discovery.
+
+### 🧪 Tests and verification
+
+- Local run: **148 passed, 5 skipped**, with **63% aggregate line coverage** on Python 3.13.5 / Linux (`python -m pytest --cov=vaultsh --cov-report=term-missing -q`).
+- The 5 skips are one entire Textual UI test module (Textual is declared but unavailable in this offline environment), three `embit`-dependent Bitcoin derivation tests, and one `eth-utils`-dependent EIP-55 test.
+- Python source compilation passed. Network tests use mocked responses; no live provider was contacted.
+
+### 🛡️ Security notes and limitations
+
+- Vaultsh remains pre-alpha, unaudited, and unsuitable for real funds.
+- The Textual UI was not runtime-tested in this environment because the Textual package could not be downloaded; its headless tests are included and should run after installing `.[dev]` in a network-enabled environment.
+- The header title is Textual's in-app Header title; behavior of the operating-system terminal tab/title bar depends on the terminal emulator.
+- The Files tab selects a path only. It does not preview, parse, or reveal vault secrets.
+- There is no built-in raster-image widget in the chosen Textual core interface; the dashboard uses a responsive text/ASCII brand mark rather than claiming bitmap scaling support.
+- The UI does not implement Tor transport. If `tor_enabled = true`, network requests fail closed. Network requests still require both TOML permission and the per-request checkbox/CLI flag.
+- Monero, EVM key management, token balances, transaction construction/signing/broadcasting, full wallet discovery, and independent security review remain out of scope/unimplemented.
 
 ## 🚀 [0.6.0] - 2026-10-27
 

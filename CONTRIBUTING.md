@@ -1,89 +1,45 @@
 # Contributing to Vaultsh
 
-**🌐 Documentation:** [English](CONTRIBUTING.md) · [Polski](docs/pl/CONTRIBUTING.md) · [Русский](docs/ru/CONTRIBUTING.md)
+Vaultsh is security-sensitive beta software. Keep contributions small, reviewable, and supported by tests. Never claim that a mocked or dependency-skipped feature has been verified against a real network.
 
-Vaultsh is a pre-alpha security-sensitive project. Contributions should be small, reviewable, tested with synthetic data, and documented accurately. Do not claim a feature is implemented if it is only scaffolded or mocked.
-
-## Development checks
+## Development setup
 
 ```bash
+python -m venv .venv
+# Windows PowerShell: .venv\\Scripts\\Activate.ps1
+# Linux/macOS/Termux: source .venv/bin/activate
 python -m pip install -e ".[dev]"
-pytest -q
-ruff check .
-ruff format --check .
-mypy src/vaultsh
 python -m compileall -q src tests
-python -m build
+python -m pytest --cov=vaultsh --cov-report=term-missing -q
+ruff check .
+mypy src/vaultsh
 ```
 
-Run all checks that are available. If a dependency/tool is missing or tests skip a standard vector, record that explicitly rather than reporting a complete pass.
+## Requirements for chain code
 
-## Changelog format
+- Use chain-specific derivation/signing libraries; do not create one generic crypto path for Bitcoin, EVM, Solana and Monero.
+- Prefer integer base units and strict decimal-string parsing for amounts. Never use floating point for transaction amounts/fees.
+- Keep signing local. Prepare a transaction, show recipient/amount/network/fee, then require a typed confirmation before broadcast/relay. Do not add an unattended `--yes` broadcast flag.
+- Keep secret phrases, private keys, signed raw transactions, RPC credentials and Monero transaction metadata out of logs, exceptions, dataclass reprs, README examples, fixtures and tests.
+- Any new endpoint needs strict URL/network validation, timeouts, response-size limits, redirect handling, explicit network permission, and fake-response tests. Never automatically pick a public provider.
+- Add tests using known official vectors for derivation/signing and mocked network responses. Mark tests as skipped when dependencies are unavailable, and record the reason instead of claiming success.
+- Update README.md, README.pl.md, README.ru.md, CHANGELOG.md, docs/ and the release test report for user-visible changes.
 
-Use the release heading and categories in `CHANGELOG.md`:
+## Commit message examples
 
-```markdown
-## 🚀 [0.6.0] - 2026-10-27
-
-### ✨ Added
-- Added ...
-
-### 🔄 Changed
-- Updated ...
-
-### 🐛 Fixed
-- Fixed ...
-
-### 🔒 Security notes and limitations
-- ...
-```
-
-New work goes under `## 🚧 [Unreleased]` until a release is cut. Keep entries user-visible, specific, and truthful. Include relevant security limitations; do not write “secure” or “audited” based only on tests.
-
-## Emoji and commit-message guide
-
-Use one leading emoji and an imperative English phrase. Emoji describe the primary intent of a change.
-
-| Emoji | Use it for | Example |
-|---|---|---|
-| 🔄 | Update existing behavior/configuration | `🔄 Update configuration handling` |
-| ✨ | Add a user-visible feature | `✨ Add Ethereum balance lookup` |
-| 🐛 | Fix a defect | `🐛 Fix JSON-RPC response validation` |
-| 🔒 | Security hardening | `🔒 Reject unverified RPC redirects` |
-| ⚡ | Performance improvement | `⚡ Reduce startup overhead` |
-| 📝 | Documentation-only change | `📝 Update network adapter guide` |
-| ♻️ | Refactoring without intended behavior change | `♻️ Refactor network permission checks` |
-| 🧪 | Add or improve tests | `🧪 Add Ethereum RPC client tests` |
-| 🔥 | Remove obsolete code/functionality | `🔥 Remove deprecated network helper` |
-| 🚀 | Release preparation | `🚀 Release Vaultsh 0.6.0` |
-
-Examples of complete commit messages:
-
-```text
-✨ Add Ethereum Mainnet balance lookup
-🧪 Add mocked JSON-RPC chain-ID tests
-📝 Document Bitcoin address-history limits
-🔒 Reject malformed Ethereum address checksums
-🚀 Release Vaultsh 0.6.0
-```
-
-If a commit contains several distinct changes, split it when practical. Do not use `🚀 Release` for ordinary changes that do not cut a version.
-
-## Pull-request checklist
-
-- [ ] The change has a clear scope and does not silently enable network traffic.
-- [ ] Chain-specific address, derivation, unit, and RPC rules stay in that chain's adapter.
-- [ ] Tests cover valid, malformed, and hostile responses without calling public APIs.
-- [ ] No real recovery phrase, password, private key, vault, backup, or endpoint token is included.
-- [ ] Relevant README, CLI/configuration/security docs, and CHANGELOG are updated.
-- [ ] `git diff --check` passes and generated caches/artifacts are excluded.
-- [ ] Results accurately report skipped tests, unrun tools, and unverified platforms.
+- `✨ Add Solana native transfer preview`
+- `🐛 Fix Monero Mainnet address validation`
+- `🔒 Refuse unrecognized QR payloads`
+- `🧪 Add transaction-signing regression tests`
+- `📝 Update beta installation guide`
+- `♻️ Refactor chain-specific wallet adapters`
+- `🚀 Release Vaultsh 1.0.0-beta.1`
 
 ## Release checklist
 
-1. Update version metadata in `pyproject.toml` and `src/vaultsh/__init__.py`.
-2. Move the release notes from `Unreleased` into a dated version heading.
-3. Install all runtime/dev dependencies and run the full suite with no unexpected skips.
-4. Run Ruff, mypy, package build, and automated Windows/Linux CI.
-5. Inspect the archive for caches, `.coverage`, local configs, vaults, backups, and other secrets.
-6. Update test results and security limitations; do not equate test count with audit status.
+1. Run tests with all runtime and dev dependencies installed.
+2. Run official derivation/signing vectors and controlled local-node integration tests.
+3. Build and inspect the wheel/sdist, audit dependencies/licenses, and test Windows/Linux/Termux.
+4. Review all transaction previews and failure/cancellation paths, and verify no accidental broadcast occurs before typed confirmation.
+5. Update version metadata, all three README files, changelog, security policy, test report, and release artifacts.
+6. Do not label the project stable or safe for significant real funds without independent security review.

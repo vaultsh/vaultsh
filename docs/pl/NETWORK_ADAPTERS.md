@@ -1,41 +1,25 @@
-# Adaptery sieciowe
+# Adaptery sieciowe — Vaultsh 1.0.0-beta.1
 
-**🌐 Język:** [English](../NETWORK_ADAPTERS.md) · [Polski](NETWORK_ADAPTERS.md) · [Русский](../ru/NETWORK_ADAPTERS.md) · [README](../../README.pl.md)
+| Sieć | Odczyt | Wysyłanie | Ograniczenie |
+|---|---|---|---|
+| Bitcoin Mainnet | Saldo i pierwsza strona historii jednego adresu przez Esplora | Podpis lokalny P2WPKH i broadcast | **Nie używaj prawdziwych środków:** skanowany jest tylko pierwszy adres odbiorczy; zmiana na `/1/0` nie jest odkrywana |
+| Ethereum Mainnet (chain ID 1) | Saldo ETH przez JSON-RPC | Lokalnie podpisane legacy EIP-155 | Bez EIP-1559, ERC-20, kontraktów i potwierdzeń/finality |
+| Polygon (137), Arbitrum One (42161), Optimism (10), Base (8453) | Salda aktywów natywnych | Wysyłanie wyłączone | Tylko odczyt |
+| Solana Mainnet Beta | Saldo SOL, weryfikacja genesis hash | Lokalnie podpisany transfer SOL | Bez SPL, historii, discovery i finality polling |
+| Monero Mainnet | Adres/saldo przez lokalny oficjalny RPC | RPC przygotowuje nieprzekazaną transakcję; potwierdzenie; następnie relay | Seed i pliki portfela pozostają poza sejfem Vaultsh; RPC wyłącznie loopback |
 
-## Obsługiwane sieci
+## Polityka sieciowa
 
-| Klucz | Sieć | Chain ID | Aktywo | Dostępne operacje |
-|---|---|---:|---|---|
-| `bitcoin` | Bitcoin Mainnet | — | BTC | Saldo jednego adresu i pierwsza strona historii przez API Esplora |
-| `ethereum` | Ethereum Mainnet | `1` | ETH | Natywne saldo przez JSON-RPC 2.0 |
-| `polygon` | Polygon PoS Mainnet | `137` | POL | Natywne saldo przez JSON-RPC 2.0 |
-| `arbitrum` | Arbitrum One | `42161` | ETH | Natywne saldo przez JSON-RPC 2.0 |
-| `optimism` | Optimism Mainnet | `10` | ETH | Natywne saldo przez JSON-RPC 2.0 |
-| `base` | Base Mainnet | `8453` | ETH | Natywne saldo przez JSON-RPC 2.0 |
-| `monero` | Monero | — | — | Niezaimplementowane |
+Każda operacja wymaga jawnego endpointu, `network_requests_enabled = true` w TOML i flagi `--allow-network`. Tor nie jest zaimplementowany; przy `tor_enabled=true` operacja kończy się odmową. Operator endpointu może poznać sprawdzany publiczny adres i metadane połączenia. Testy sieciowe używają atrap; w środowisku przygotowującym wydanie nie broadcastowano prawdziwej transakcji.
 
-## Model zezwoleń
+## Bitcoin
 
-Każda operacja sieciowa wymaga `network_requests_enabled = true` w TOML i `--allow-network`. Nie ma automatycznego wyboru dostawcy. Zdalny endpoint musi używać HTTPS; HTTP jest dozwolone wyłącznie na loopback. Klienci stosują timeouty, limity rozmiaru odpowiedzi, odrzucają przekierowania i ignorują automatyczne proxy.
+Saldo/historia dotyczą pojedynczego adresu. Wysyłanie wybiera potwierdzone UTXO pierwszego adresu, szacuje opłatę, podpisuje P2WPKH lokalnie i wymaga dokładnego potwierdzenia przed POST `/tx`. Reszta trafia na `m/84'/0'/0'/1/0`, którego Vaultsh jeszcze nie skanuje. Środki są możliwe do odzyskania z frazy w zgodnym portfelu, ale Vaultsh nie umie ich obecnie wykryć/spendować.
 
-## Bitcoin Mainnet / Esplora
+## Ethereum i Solana
 
-Saldo i historia dotyczą tylko adresu podanego przez użytkownika. Historia obejmuje pierwszą stronę i najwyżej 25 rekordów — nie jest pełną historią portfela i nie wyszukuje innych adresów. Wynik jest dostarczony przez endpoint, a nie niezależnie zweryfikowany jako dowód stanu.
+ETH: sprawdzenie chain ID, podpis legacy `gasPrice` na Mainnet, limit opłaty i potwierdzenie przed `eth_sendRawTransaction`. Hash odpowiedzi to zgłoszenie, nie finalność. SOL: endpoint weryfikowany przez genesis hash Mainnet; kwoty w lamportach; podpisany transfer SOL wysyłany po potwierdzeniu. SPL i finality polling nie istnieją.
 
-## EVM JSON-RPC
+## Monero
 
-Przed `eth_getBalance` program porównuje `eth_chainId` z profilem:
-
-| `--chain` | Oczekiwany ID | Jednostka wyświetlania |
-|---|---:|---|
-| `ethereum` | `0x1` (1) | ETH / wei |
-| `polygon` | `0x89` (137) | POL / jednostki bazowe |
-| `arbitrum` | `0xa4b1` (42161) | ETH / wei |
-| `optimism` | `0xa` (10) | ETH / wei |
-| `base` | `0x2105` (8453) | ETH / wei |
-
-Wartości są przetwarzane jako liczby całkowite. Odpowiedź dostawcy nie jest dowodem stanu. Mieszane wielkości liter w adresie wymagają poprawnej sumy EIP-55.
-
-## Jawne ograniczenia
-
-Nie ma tworzenia/odzyskiwania portfela EVM, przechowywania kluczy EVM, tokenów ERC-20, historii transakcji EVM, wywołań kontraktów poza opisanym odczytem salda, estymacji gas, podglądu, podpisywania ani wysyłania transakcji. Akceptowane są tylko wymienione mainnety. Monero ma odrębny model kluczy i prywatności — nie można traktować go jako odmiany Bitcoin/EVM. Katalog lub protokół adaptera nie oznacza kompletnej obsługi sieci.
+Połączenie tylko z `monero-wallet-rpc` na loopback. Adres portfela i cel muszą być Mainnet. Transfer używa `do_not_relay=true` i `get_tx_metadata=true`; po pokazaniu kwoty/opłaty oraz tekstowym potwierdzeniu Vaultsh wywołuje `relay_tx` z metadanymi przygotowanej transakcji. Zweryfikuj konfigurację demona i RPC.

@@ -202,7 +202,7 @@ class BitcoinEsploraClient:
             method="GET",
             headers={
                 "Accept": "application/json",
-                "User-Agent": "Vaultsh/0.6.0",
+                "User-Agent": "Vaultsh/1.0.0b1",
             },
         )
         try:
@@ -266,7 +266,7 @@ class BitcoinEsploraClient:
         request = Request(
             url,
             method="GET",
-            headers={"Accept": "application/json", "User-Agent": "Vaultsh/0.6.0"},
+            headers={"Accept": "application/json", "User-Agent": "Vaultsh/1.0.0b1"},
         )
         try:
             with self._opener.open(request, timeout=self.timeout_seconds) as response:

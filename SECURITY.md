@@ -1,34 +1,30 @@
-# Security policy
+# Security Policy
 
-**🌐 Documentation:** [English](SECURITY.md) · [Polski](docs/pl/SECURITY.md) · [Русский](docs/ru/SECURITY.md)
-
-Vaultsh is a **pre-alpha, unaudited project**. Do not use it to store or transact real funds.
+**Vaultsh 1.0.0-beta.1 is beta software and has not received an independent security audit. Do not use it to store or transact significant funds.** Transaction broadcasts on public mainnets are irreversible.
 
 ## Reporting a vulnerability
 
-Do not put exploitable details, live recovery phrases, passwords, private keys, wallet files, or backups in a public issue. If a private security contact or repository security-advisory channel has been configured for the copy of Vaultsh you use, send the report there. If no private channel exists, contact the maintainers through the trusted project-maintainer channel before publishing technical details; do not assume an address or identity that is not listed by the project.
+Do not publish recovery phrases, private keys, vault files, RPC credentials, provider URLs containing access tokens, signed raw transactions, Monero transaction metadata, or other secrets in a public issue. Provide a minimal reproduction with synthetic keys, fake endpoints, and sanitized logs. If a private reporting channel is configured for the repository, use it; otherwise open a public issue without secrets asking for a private disclosure path.
 
-A useful report includes:
+## Implemented security boundaries
 
-- Affected version/commit and operating system/Python version.
-- A concise impact statement and reproducible steps using synthetic data.
-- Whether the issue involves data confidentiality, integrity, network privacy, availability, or packaging.
-- A suggested mitigation, if known.
+- The local Vaultsh vault uses authenticated encryption and password-derived keys. BTC/ETH/SOL BIP-39 phrases are stored inside the encrypted payload; wallet listing shows only public metadata.
+- Monero secrets are handled by the official local `monero-wallet-rpc` and stored in the Monero wallet directory, not inside the Vaultsh vault.
+- Network commands require both `network_requests_enabled = true` in TOML and the command-line flag `--allow-network`.
+- Remote Esplora/EVM/Solana endpoints must use HTTPS; redirects and ambient proxy discovery are disabled by those clients. HTTP is limited to loopback for local services.
+- Monero wallet RPC is restricted to loopback and validates addresses as Mainnet before transfer preparation/display.
+- Transfers show amount, recipient, and fee information and require exact typed confirmation. The CLI intentionally has no `--yes` bypass.
+- QR generation accepts only recognizable public address formats and rejects whitespace/mnemonic text and unrecognized payloads. It is not a full checksum validator for every chain.
 
-Redact endpoints that contain access tokens and use only synthetic vaults/phrases in test cases.
+## Important limitations
 
-## Scope notes
+- **Bitcoin sending has a known funds-discovery limitation:** only the first receive address is scanned for spendable UTXOs; change is sent to BIP-84 change path `/1/0`, which this release does not scan. Do not use the BTC send path with real funds until change/address discovery is implemented and verified.
+- Ethereum sends native ETH on Mainnet only, using a legacy `gasPrice` transaction; other EVM profiles are balance-only.
+- Solana sends native SOL only; a JSON-RPC signature response does not prove confirmation/finality.
+- Monero depends on the user's local wallet-RPC and daemon configuration. Never bind `monero-wallet-rpc` to a public interface.
+- Tor transport, hardware-wallet support, multisig, complete wallet address discovery, token transfers, and independent audit are not implemented.
+- No live endpoint or real transaction was used in the build/test environment. Some tests were skipped because required chain/UI dependencies were unavailable.
 
-Vaultsh 0.6.0 supports encrypted local vaults, limited offline Bitcoin wallet creation/recovery, read-only Bitcoin address balance/first-page history, and read-only native-asset balance queries on Ethereum, Polygon PoS, Arbitrum One, Optimism, and Base mainnets. EVM private-key derivation/storage, ERC-20 tokens, Monero, Tor transport, transaction construction, signing, and broadcasting are not implemented.
+## User responsibilities
 
-Network requests require a config permission and `--allow-network`. Endpoints are user-selected and the endpoint operator can learn queried addresses and connection metadata. Tor is not implemented; enabling `tor_enabled` causes current query commands to refuse a direct connection.
-
-## Security limitations
-
-- No independent security or cryptographic audit has been performed.
-- Test results do not constitute a security certification.
-- Python memory handling does not promise secret zeroization.
-- Recovery phrases are displayed in a terminal and may be captured by screen recording or screenshots.
-- Provider-supplied balance/history data is not independently verified as a cryptographic proof.
-
-See [the security model](docs/SECURITY_MODEL.md) and [the encrypted vault format](docs/VAULT_FORMAT.md) before changing storage or network code.
+Keep recovery phrases offline. Protect the vault password and recovery phrase independently. Back up and test restoring both the Vaultsh vault and Monero wallet files. Treat data from remote providers as untrusted. Review the destination, amount, network and maximum fee at each transaction prompt. Verify the resulting transaction using a separate trusted node/explorer.

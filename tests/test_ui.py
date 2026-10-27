@@ -23,7 +23,8 @@ def test_transaction_review_includes_all_fields() -> None:
     assert "address123" in review
     assert "0.01 BTC" in review
     assert "0.0001 BTC" in review
-    assert "not implemented" in review
+    assert "typed confirmation" in review
+    assert "signing/broadcasting" in review
 
 
 def test_confirmation_helper_rejects_empty_action() -> None:

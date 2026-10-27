@@ -18,7 +18,7 @@ def test_create_and_read_vault_document(tmp_path: Path) -> None:
     loaded = read_vault_document(path, "unit-test-passphrase")
     assert loaded == created
     assert loaded.label == "Primary"
-    assert loaded.schema_version == 2
+    assert loaded.schema_version == 3
     assert loaded.wallet_count == 0
     assert path.read_bytes() != b"Primary"
 

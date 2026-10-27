@@ -1,49 +1,25 @@
-# Historia zmian — polski skrót wydań
+# Changelog — Vaultsh
 
-**🌐 Język:** [English](../../CHANGELOG.md) · [Polski](CHANGELOG.md) · [Русский](../ru/CHANGELOG.md)
-
-## 🚧 [Unreleased]
+## 🚀 [1.0.0-beta.1] — 2026-10-27
 
 ### ✨ Dodano
-- Dodano polskie i rosyjskie README oraz pełne zbiory dokumentacji językowej z odnośnikami do przełączania języka.
-- Dodano `--lang en|pl|ru` dla panelu startowego i głównych ekranów informacyjnych.
-- Dodano pogrupowany panel poleceń, pierwszy start krok po kroku, ostrzeżenie pre-alpha i przypomnienie o podwójnej zgodzie na sieć.
-- Dodano testy regresyjne panelu, przeglądu sieci, ekranów informacyjnych PL/RU i obsługi nieznanego kodu języka.
+- Portfele Bitcoin, Ethereum Mainnet i Solana tworzone/odzyskiwane z angielskiej frazy BIP-39 oraz zaszyfrowane rekordy BTC/ETH/SOL.
+- Lokalne podpisywanie i wysyłanie P2WPKH BTC, natywnego ETH (legacy EIP-155) i natywnego SOL po podglądzie i dokładnym potwierdzeniu tekstowym.
+- Operacje Monero przez oficjalny lokalny `monero-wallet-rpc`; przygotowanie transferu bez relay, a następnie relay po potwierdzeniu.
+- QR/PNG dla rozpoznawanych publicznych adresów BTC/EVM/XMR/SOL.
+- Komendy i testy wysyłania, walidacji kwot, adresów, mainnet i metadata relay XMR.
 
 ### 🔄 Zmieniono
-- Uporządkowano tabele i panele terminala; rozdzielono długie polecenia na osobne wiersze.
-- Zaktualizowano lokalne wyniki testów do 144 zaliczonych, 4 pominiętych i 82% pokrycia linii.
+- Wersja pakietu to `1.0.0b1` (etykieta `1.0.0-beta.1`). Dokumentację i interfejs uaktualniono w językach EN/PL/RU.
 
-### 🛡️ Uwagi
-- Lokalizacja działania CLI obejmuje obecnie panel startowy i główne ekrany informacyjne. Szczegółowa pomoc, część promptów i komunikatów błędów pozostają po angielsku.
-- Numer wersji aplikacji pozostaje 0.6.0 do czasu formalnego wydania.
+### 🧪 Testy
+- Lokalnie: **194 zaliczone, 7 pominiętych, 53% pokrycia**.
+- Pominięcia: Textual (1), embit (4), eth-utils (1), eth-account (1). Nie wykonano połączeń z prawdziwymi RPC/Esplora ani broadcastu realnej transakcji.
 
-## 🚀 [0.6.0] — 2026-10-27
+### 🛡️ Ograniczenia bezpieczeństwa
+- **Nie używaj BTC send z prawdziwymi środkami**: UTXO wyszukiwane są tylko na pierwszym receive-adresie, a change `/1/0` nie jest wykrywany przez Vaultsh.
+- ETH send obejmuje wyłącznie natywny ETH Mainnet w formacie legacy. SOL send obejmuje tylko natywny SOL. Monero korzysta z zewnętrznego procesu `monero-wallet-rpc`, który musi działać lokalnie i bezpiecznie.
+- Nie ma audytu, transportu Tor, multisig, hardware wallet ani testów realnych broadcastów.
 
-### ✨ Dodano
-- Odczyt pierwszej strony historii transakcji pojedynczego adresu Bitcoin przez Esplora, maksymalnie 25 rekordów.
-- Odczyt natywnego salda Ethereum, Polygon PoS, Arbitrum One, Optimism i Base przez JSON-RPC z kontrolą `chainId`.
-- Walidację adresów EVM i checksumy EIP-55 dla adresów o mieszanym zapisie.
-- Ograniczenia odpowiedzi HTTP, timeouty, blokowanie przekierowań oraz testy atrap sieciowych.
-
-### 🛡️ Ograniczenia
-- Brak portfeli/kluczy EVM, tokenów ERC-20, Monero, podpisywania i wysyłania transakcji oraz transportu Tor.
-- Wyniki salda i historii są danymi dostawcy, a nie dowodem kryptograficznym.
-
-## 🚀 [0.4.5] — 2026-10-27
-
-- Dodano jawnie autoryzowany odczyt salda pojedynczego adresu Bitcoin.
-- Dodano politykę HTTPS dla zdalnych endpointów, limity odpowiedzi i walidację salda.
-
-## 🚀 [0.3.0] — 2026-10-27
-
-- Dodano ograniczone tworzenie i odzyskiwanie portfela Bitcoin Mainnet BIP-39/BIP-84 oraz rekordy portfeli w schemacie sejfu v2.
-- Dodano listowanie metadanych publicznych bez fraz odzyskiwania.
-
-## 🚀 [0.2.0] — 2026-10-27
-
-- Dodano komendy inicjalizacji, sprawdzania, kopii i odtwarzania zaszyfrowanego sejfu oraz generowanie i walidację konfiguracji TOML.
-
-## 🚀 [0.1.0] — 2026-10-27
-
-- Dodano początkowy układ pakietu Python, CLI Typer/Rich, konfigurację, prymitywy szyfrowania, kopie zapasowe i bazowe testy.
+## 🚧 Unreleased
+Brak zapisanych zmian.

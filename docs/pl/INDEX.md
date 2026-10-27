@@ -1,34 +1,27 @@
-# Dokumentacja Vaultsh — język polski
+# Indeks dokumentacji — Vaultsh 1.0.0-beta.1
 
-**🌐 Język:** [English](../INDEX.md) · [Polski](INDEX.md) · [Русский](../ru/INDEX.md) · [README po polsku](../../README.pl.md)
+**Języki:** [English](../INDEX.md) · [Polski](INDEX.md) · [Русский](../ru/INDEX.md) · [README PL](../../README.pl.md)
 
-Dokumentacja dotyczy kodu w wersji bazowej **0.6.0** oraz niezapisanych jeszcze jako wydanie poprawek interfejsu i tłumaczeń. Vaultsh jest projektem pre-alpha, nieaudytowanym portfelem.
+Vaultsh to lokalny portfel self-custody w wersji beta. Nie przeszedł niezależnego audytu. Nie przechowuj w nim znacznych środków. Szczególnie nie używaj wysyłania BTC z prawdziwymi środkami, dopóki nie zostanie ukończone wykrywanie adresów i środków reszty.
 
-## Dokumentacja użytkownika
+## Funkcje zaimplementowane
+- Zaszyfrowany lokalny sejf i rekordy portfeli BTC/ETH/SOL.
+- Tworzenie i odzyskiwanie portfeli z angielskiej frazy BIP-39 (12/24 słowa, pusta dodatkowa fraza).
+- QR/PNG dla rozpoznawanych formatów publicznych adresów BTC/EVM/XMR/SOL; nie jest to uniwersalna weryfikacja sumy kontrolnej.
+- Odczyt salda/historii jednego adresu BTC i sald natywnych pięciu sieci EVM.
+- Podpisywanie lokalne i wysyłanie natywnego BTC/ETH/SOL po podglądzie i dokładnym potwierdzeniu tekstowym.
+- Obsługa Monero przez oficjalne lokalne `monero-wallet-rpc`; pliki portfela i seed Monero pozostają poza sejfem Vaultsh.
+- Interfejs Textual i awaryjny dashboard Rich.
 
-- [README](../../README.pl.md) — opis, instalacja, szybki start, funkcje i ostrzeżenia.
-- [Referencja CLI](CLI_REFERENCE.md) — polecenia i opcje.
-- [Konfiguracja](CONFIGURATION.md) — ustawienia TOML i podwójna zgoda na sieć.
-- [Adaptery sieciowe](NETWORK_ADAPTERS.md) — Bitcoin Esplora, JSON-RPC EVM i ograniczenia.
-- [Format sejfu](VAULT_FORMAT.md) — szyfrowanie, schematy v1/v2 i przechowywanie frazy odzyskiwania.
-- [Model bezpieczeństwa](SECURITY_MODEL.md) — chronione zasoby, granice zaufania i ryzyka.
-- [Roadmapa](ROADMAP.md) — funkcje działające i planowane.
-- [Wyniki testów](TEST_RESULTS.md) — faktyczne wyniki lokalne i pominięte testy.
+## Najważniejsze ograniczenia
+- BTC: wyszukiwanie obejmuje tylko potwierdzone UTXO pierwszego adresu odbiorczego. Reszta trafia na `/1/0`, którego Vaultsh jeszcze nie skanuje. Nie wysyłaj prawdziwego BTC.
+- ETH: tylko natywne ETH Mainnet (chain ID 1), transakcje legacy `gasPrice`; bez ERC-20/EIP-1559 i śledzenia finalności.
+- SOL: tylko natywne SOL, bez SPL i finality polling.
+- Pozostałe profile EVM są tylko do odczytu.
+- Monero wymaga prawidłowo skonfigurowanego `monero-wallet-rpc` na loopback.
+- Brak działającego transportu Tor, portfeli sprzętowych, multisig i niezależnego audytu.
 
-## Dokumentacja dla osób rozwijających projekt
+## Dokumenty
+- [Architektura](../ARCHITECTURE.md), [CLI](../CLI_REFERENCE.md), [Konfiguracja](../CONFIGURATION.md), [Sieci](../NETWORK_ADAPTERS.md), [Format sejfu](../VAULT_FORMAT.md), [Model bezpieczeństwa](../SECURITY_MODEL.md), [Wyniki testów](../TEST_RESULTS.md), [Rozwój](../DEVELOPMENT.md), [Interfejs](../INTERFACE.md), [Roadmapa](../ROADMAP.md).
 
-- [Architektura](ARCHITECTURE.md) — podział pakietów i kierunek zależności.
-- [Rozwój i testowanie](DEVELOPMENT.md) — środowisko oraz kontrole jakości.
-- [Zasady współtworzenia](CONTRIBUTING.md) — changelog, commity i lista kontrolna wydania.
-- [Polityka bezpieczeństwa](SECURITY.md) — zgłaszanie podatności.
-- [Historia zmian](CHANGELOG.md) — zmiany w poszczególnych wersjach.
-
-## Stan funkcji 0.6.0
-
-- Zaszyfrowane lokalne sejfy i kopie zapasowe.
-- Ograniczone tworzenie/odzyskiwanie portfela Bitcoin Mainnet BIP-39/BIP-84 offline.
-- Odczyt salda i pierwszej strony historii pojedynczego adresu BTC przez jawnie wybrany endpoint Esplora.
-- Odczyt natywnego salda przez JSON-RPC dla Ethereum, Polygon PoS, Arbitrum One, Optimism i Base.
-- Każde zapytanie sieciowe wymaga `network_requests_enabled = true` oraz `--allow-network`.
-
-Niezaimplementowane pozostają m.in. klucze i portfele EVM, tokeny ERC-20, Monero, historia EVM, odkrywanie wszystkich adresów, podpisywanie i wysyłanie transakcji oraz rzeczywisty transport Tor.
+Ostatni lokalny wynik: **194 zaliczone, 7 pominiętych, 53% pokrycia**. Nie wysłano transakcji na prawdziwej sieci. Szczegóły w [raporcie testów](../TEST_RESULTS.md).

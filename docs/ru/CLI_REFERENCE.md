@@ -1,63 +1,52 @@
-# Справочник командной строки (CLI)
+# CLI — Vaultsh 1.0.0-beta.1
 
-**🌐 Язык:** [English](../CLI_REFERENCE.md) · [Polski](../pl/CLI_REFERENCE.md) · [Русский](CLI_REFERENCE.md) · [README](../../README.ru.md)
+Запустите `vaultsh --help` и `vaultsh COMMAND --help`. Параметр языка `--lang pl` или `--lang ru` указывается до команды.
 
-## Язык интерфейса
+```bash
+vaultsh config-init ./vaultsh.toml
+vaultsh config-check ./vaultsh.toml
+vaultsh vault init ./main.vault --label "My Vault"
+vaultsh vault check ./main.vault
+vaultsh wallet create --vault ./main.vault --label BTC --network bitcoin
+vaultsh wallet create --vault ./main.vault --label ETH --network ethereum
+vaultsh wallet create --vault ./main.vault --label SOL --network solana
+vaultsh wallet list --vault ./main.vault
+vaultsh wallet qr --vault ./main.vault --wallet-id WALLET_ID --output ./address.png
+vaultsh qr PUBLIC_ADDRESS --output ./address.png
+```
 
-Опция языка указывается до команды: `vaultsh --lang ru`, `vaultsh --lang pl about` или `vaultsh --lang en networks`. Коды: `en`, `pl`, `ru`. Сейчас локализованы стартовая панель и основные информационные экраны; подробная справка подкоманд, часть запросов ввода и некоторые сообщения об ошибках пока на английском.
+Для сетевого действия TOML должен разрешать `network_requests_enabled = true`; укажите endpoint и `--config ./vaultsh.toml --allow-network`. Если `tor_enabled=true`, запросы блокируются.
 
-## Общие команды
+BTC:
+```bash
+vaultsh bitcoin balance ADDRESS --endpoint https://YOUR-ESPLORA/api --config ./vaultsh.toml --allow-network
+vaultsh bitcoin history ADDRESS --endpoint https://YOUR-ESPLORA/api --config ./vaultsh.toml --allow-network --limit 10
+vaultsh bitcoin send --wallet-id WALLET_ID --vault ./main.vault --to bc1qRECIPIENT --amount 0.0001 --endpoint https://YOUR-ESPLORA/api --config ./vaultsh.toml --allow-network --max-fee-sats 100000
+```
+**Не отправляйте реальные BTC:** обнаруживаются только UTXO первого receive-адреса; change `/1/0` не сканируется.
 
-- `vaultsh` — стартовая панель с группами команд и быстрыми шагами.
-- `vaultsh version` — версия пакета.
-- `vaultsh about` — статус реализации и ограничения.
-- `vaultsh networks` — реализованные и планируемые сети.
-- `vaultsh privacy` — настройки конфиденциальности по умолчанию.
-- `vaultsh config` — настройки без секретов.
+ETH Mainnet:
+```bash
+vaultsh ethereum balance 0xADDRESS --endpoint https://YOUR-ETH-RPC --config ./vaultsh.toml --allow-network
+vaultsh ethereum send --wallet-id WALLET_ID --vault ./main.vault --to 0xRECIPIENT --amount 0.001 --endpoint https://YOUR-ETH-RPC --config ./vaultsh.toml --allow-network --max-fee-eth 0.1
+vaultsh evm balance 0xADDRESS --chain polygon --endpoint https://YOUR-RPC --config ./vaultsh.toml --allow-network
+```
+Только нативный ETH Mainnet с legacy `gasPrice`; другие EVM-сети только для чтения.
 
-## Конфигурация
+Solana:
+```bash
+vaultsh solana balance SOL_ADDRESS --endpoint https://YOUR-SOL-RPC --config ./vaultsh.toml --allow-network
+vaultsh solana send --wallet-id WALLET_ID --vault ./main.vault --to SOL_RECIPIENT --amount 0.01 --endpoint https://YOUR-SOL-RPC --config ./vaultsh.toml --allow-network --max-fee-sol 0.01
+```
+Только SOL; нет SPL и polling финальности.
 
-- `vaultsh config-init PATH [--force]` — создать шаблон TOML; существующий файл не заменяется без `--force`.
-- `vaultsh config-check PATH` — прочитать и проверить TOML без вывода секретов.
-
-## Хранилище
-
-- `vaultsh vault init PATH [--label LABEL]` — создать зашифрованное хранилище; пароль вводится скрыто и подтверждается.
-- `vaultsh vault check PATH` — расшифровать и проверить документ.
-- `vaultsh vault backup SOURCE DESTINATION [--overwrite]` — копировать зашифрованный файл.
-- `vaultsh vault restore SOURCE DESTINATION [--overwrite]` — восстановить копию; затем проверить её командой `vault check`.
-
-## Bitcoin-кошелёк
-
-- `vaultsh wallet create --vault PATH [--label LABEL]` — офлайн создать Mainnet-кошелёк и показать фразу восстановления.
-- `vaultsh wallet recover --vault PATH [--label LABEL]` — импортировать английскую фразу BIP-39.
-- `vaultsh wallet list --vault PATH` — показать публичные метаданные без фразы.
-- `vaultsh wallet recovery-phrase WALLET_ID --vault PATH` — показать фразу после явного подтверждения и разблокировки хранилища.
-
-## Bitcoin: запросы только для чтения
-
-- `vaultsh bitcoin balance ADDRESS --endpoint URL --config PATH --allow-network` — баланс одного адреса.
-- `vaultsh bitcoin history ADDRESS --endpoint URL --config PATH [--limit N] --allow-network` — первая страница истории, максимум 25 записей.
-
-## EVM: чтение нативного баланса
-
-- `vaultsh ethereum balance ADDRESS --endpoint URL --config PATH --allow-network` — команда для Ethereum Mainnet.
-- `vaultsh evm balance ADDRESS --chain NETWORK --endpoint URL --config PATH --allow-network` — `--chain`: `ethereum`, `polygon`, `arbitrum`, `optimism`, `base`.
-
-| Сеть | Chain ID | Актив |
-|---|---:|---|
-| Ethereum Mainnet | `1` | ETH |
-| Polygon PoS | `137` | POL |
-| Arbitrum One | `42161` | ETH |
-| Optimism | `10` | ETH |
-| Base | `8453` | ETH |
-
-## Поведение и ошибки
-
-- Публичный провайдер автоматически не выбирается.
-- Для каждого сетевого запроса требуются разрешение в TOML и `--allow-network`.
-- Для удалённых endpoint необходим HTTPS; HTTP разрешён только для localhost/loopback.
-- Редиректы и автоматические proxy из переменных окружения отключены.
-- Проверяются ответы, ID JSON-RPC, схема, числа, адреса и chain ID.
-- При ожидаемой ошибке команда завершится с ненулевым кодом. Тексты ошибок не являются стабильным API pre-alpha.
-- Данные провайдера не доказывают владение адресом или баланс криптографически.
+Monero требует отдельно установленный официальный `monero-wallet-rpc` на loopback:
+```bash
+vaultsh monero create-wallet MY_WALLET --config ./vaultsh.toml --allow-network
+vaultsh monero open-wallet MY_WALLET --config ./vaultsh.toml --allow-network
+vaultsh monero address --config ./vaultsh.toml --allow-network
+vaultsh monero balance --config ./vaultsh.toml --allow-network
+vaultsh monero send --to XMR_MAINNET_ADDRESS --amount 0.01 --config ./vaultsh.toml --allow-network
+vaultsh monero close-wallet --config ./vaultsh.toml --allow-network
+```
+XMR seed/файлы хранятся снаружи хранилища Vaultsh. Любая отправка требует обзора и точного текстового подтверждения.

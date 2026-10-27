@@ -1,8 +1,7 @@
 """Vaultsh command-line interface.
 
-The CLI provides encrypted vault management, offline Bitcoin Mainnet wallet
-creation/recovery, and explicitly authorized read-only Bitcoin/EVM network queries.
-It does not sign transactions or broadcast payments.
+The beta CLI provides encrypted wallet records, address QR codes, read-only chain queries,
+and explicitly confirmed transaction signing/broadcast for BTC, ETH, SOL, and local Monero RPC.
 """
 
 from __future__ import annotations
@@ -26,6 +25,13 @@ from vaultsh.networks.bitcoin.client import (
     format_btc,
 )
 from vaultsh.networks.bitcoin.wallet import generate_mnemonic
+from vaultsh.networks.bitcoin.transfer import BitcoinPaymentClient, prepare_bitcoin_transfer
+from vaultsh.networks.ethereum.transfer import (
+    broadcast_evm_transfer,
+    prepare_evm_transfer,
+)
+from vaultsh.networks.solana.client import SolanaRpcClient, format_sol
+from vaultsh.networks.monero.rpc import MoneroWalletRpcClient, format_xmr
 from vaultsh.networks.ethereum.client import (
     EVM_NETWORKS,
     EvmJsonRpcClient,
@@ -39,13 +45,16 @@ from vaultsh.storage.vault_document import (
     create_vault_document,
     read_vault_document,
 )
-from vaultsh.storage.wallet_store import add_bitcoin_wallet, get_recovery_phrase, list_wallets
-from vaultsh.ui.i18n import set_language, tr
+from vaultsh.storage.wallet_store import (
+    add_bitcoin_wallet, add_multichain_wallet, get_recovery_phrase, get_wallet_record, list_wallets,
+)
+from vaultsh.ui.qr import QrError, render_address_qr, save_address_qr
+from vaultsh.ui.i18n import get_language, set_language, tr
 from vaultsh.ui.screens import render_dashboard
 
 app = typer.Typer(
     name="vaultsh",
-    help="Privacy-focused, self-custodial multi-chain wallet (pre-alpha).",
+    help="Vaultsh 1.0 Beta: self-custody wallet; test carefully, not independently audited.",
     no_args_is_help=False,
     add_completion=False,
 )
@@ -58,25 +67,25 @@ vault_app = typer.Typer(
 app.add_typer(vault_app, name="vault")
 wallet_app = typer.Typer(
     name="wallet",
-    help="Create, recover, and list offline Bitcoin Mainnet wallets.",
+    help="Create, recover, list, and display public-address QR codes for supported wallets.",
     no_args_is_help=True,
 )
 app.add_typer(wallet_app, name="wallet")
 bitcoin_app = typer.Typer(
     name="bitcoin",
-    help="Read-only Bitcoin Mainnet queries using an explicitly selected Esplora endpoint.",
+    help="Bitcoin Mainnet balance/history and locally signed BTC sends via an explicit Esplora endpoint.",
     no_args_is_help=True,
 )
 app.add_typer(bitcoin_app, name="bitcoin")
 ethereum_app = typer.Typer(
     name="ethereum",
-    help="Read-only Ethereum Mainnet queries using an explicitly selected JSON-RPC endpoint.",
+    help="Ethereum Mainnet balance and locally signed native ETH transfers via explicit JSON-RPC.",
     no_args_is_help=True,
 )
 app.add_typer(ethereum_app, name="ethereum")
 evm_app = typer.Typer(
     name="evm",
-    help="Read-only native-asset queries for explicitly supported EVM mainnets.",
+    help="Read-only native-asset queries for explicitly supported EVM mainnets (only ETH Mainnet transfers are enabled).",
     no_args_is_help=True,
 )
 app.add_typer(evm_app, name="evm")
@@ -103,7 +112,45 @@ def main(
         raise typer.Exit(code=2) from exc
     if ctx.invoked_subcommand is not None:
         return
-    render_dashboard(console, __version__)
+    # Interactive terminals get the full-screen Textual app by default. In CI,
+    # pipes, and captured output, keep the stable Rich dashboard so commands are
+    # scriptable and the program never unexpectedly takes over a non-interactive TTY.
+    if console.is_terminal:
+        _launch_textual_ui(get_language())
+    else:
+        render_dashboard(console, __version__)
+
+
+def _launch_textual_ui(language: str, config_path: Path = Path("./vaultsh.toml")) -> None:
+    try:
+        from vaultsh.ui.tui import run_tui
+    except ImportError as exc:
+        console.print(
+            "[red]The Textual interface is unavailable.[/] Install project dependencies with "
+            "[bold]python -m pip install -e .[/]."
+        )
+        raise typer.Exit(code=2) from exc
+    run_tui(language=language, config_path=config_path)
+
+
+@app.command("ui")
+def ui_command(
+    config_path: Path = typer.Option(
+        Path("./vaultsh.toml"), "--config", help="Non-secret TOML settings file to load."
+    )
+) -> None:
+    """Launch the full-screen Textual user interface."""
+    _launch_textual_ui(get_language(), config_path)
+
+
+@app.command("tui")
+def tui_command(
+    config_path: Path = typer.Option(
+        Path("./vaultsh.toml"), "--config", help="Non-secret TOML settings file to load."
+    )
+) -> None:
+    """Alias for the full-screen Textual interface."""
+    _launch_textual_ui(get_language(), config_path)
 
 
 @app.command()
@@ -122,7 +169,7 @@ def about() -> None:
 
 @app.command()
 def networks() -> None:
-    """Show implemented read-only profiles and planned network integrations."""
+    """Show the chain profiles available in this beta and their feature boundaries."""
     table = Table(title=tr("networks.title"), show_header=True, expand=True)
     table.add_column(tr("networks.network"), style="cyan")
     table.add_column(tr("networks.status"))
@@ -134,7 +181,8 @@ def networks() -> None:
                 asset=profile.asset_symbol, chain_id=profile.chain_id
             ),
         )
-    table.add_row("Monero", tr("networks.monero"))
+    table.add_row("Solana Mainnet", tr("networks.solana"))
+    table.add_row("Monero Mainnet", tr("networks.monero"))
     console.print(table)
 
 
@@ -309,56 +357,83 @@ def vault_restore(
 @wallet_app.command("create")
 def wallet_create(
     vault: Path = typer.Option(..., "--vault", "-v", help="Existing encrypted vault file."),
-    label: str = typer.Option("Bitcoin wallet", "--label", help="Wallet label."),
+    label: str = typer.Option("Wallet", "--label", help="Wallet label."),
+    network: str = typer.Option("bitcoin", "--network", help="bitcoin, ethereum, or solana."),
 ) -> None:
-    """Create an offline Bitcoin Mainnet wallet inside an encrypted vault."""
+    """Create a BIP-39 wallet and store the recovery phrase in the encrypted vault."""
     if not vault.is_file():
         console.print(f"[red]Vault file does not exist:[/] {vault}")
         raise typer.Exit(code=1)
+    network_map = {
+        "bitcoin": "bitcoin-mainnet", "bitcoin-mainnet": "bitcoin-mainnet",
+        "ethereum": "ethereum-mainnet", "ethereum-mainnet": "ethereum-mainnet",
+        "solana": "solana-mainnet", "solana-mainnet": "solana-mainnet",
+    }
+    canonical_network = network_map.get(network.strip().lower())
+    if canonical_network is None:
+        console.print("[red]Supported seed-based wallets: bitcoin, ethereum, solana.[/]")
+        console.print("[yellow]Monero is managed separately by monero-wallet-rpc.[/]")
+        raise typer.Exit(code=2)
     password = typer.prompt("Vault password", hide_input=True)
     try:
         mnemonic = generate_mnemonic()
-        summary = add_bitcoin_wallet(vault, password, label=label, mnemonic=mnemonic)
+        if canonical_network == "bitcoin-mainnet":
+            summary = add_bitcoin_wallet(vault, password, label=label, mnemonic=mnemonic)
+        else:
+            summary = add_multichain_wallet(
+                vault, password, label=label, network=canonical_network, mnemonic=mnemonic
+            )
     except (OSError, ValueError) as exc:
         console.print(f"[red]Wallet creation failed:[/] {exc}")
         raise typer.Exit(code=1) from exc
-
     console.print(Panel.fit(
         f"[bold]Label:[/] {escape(summary.label)}\n"
         f"[bold]Network:[/] {summary.network}\n"
         f"[bold]Receive address:[/] [cyan]{summary.address}[/]\n"
         f"[bold]Derivation path:[/] {summary.derivation_path}\n"
         f"[bold]Wallet ID:[/] {summary.wallet_id}",
-        title="Bitcoin wallet created",
-        border_style="green",
+        title="Wallet created", border_style="green",
     ))
     console.print(Panel(
         f"[bold white]{mnemonic}[/]",
         title="RECOVERY PHRASE — WRITE IT DOWN OFFLINE",
-        subtitle="Anyone with this phrase can control the wallet",
+        subtitle="Anyone with this phrase can control this wallet",
         border_style="red",
     ))
     console.print(
-        "[yellow]Store the phrase offline and never share it. The phrase is also stored "
-        "inside the encrypted vault. Anyone who gets both the file and its password may "
-        "recover the wallet. Keep tested backups. No funds should be sent to this pre-alpha "
-        "wallet software.[/]"
+        "[yellow]Beta software: use testnet/devnet first where supported. Never share this phrase. "
+        "Vaultsh stores it inside the encrypted vault; keep an offline backup.[/]"
     )
 
 
 @wallet_app.command("recover")
 def wallet_recover(
     vault: Path = typer.Option(..., "--vault", "-v", help="Existing encrypted vault file."),
-    label: str = typer.Option("Recovered Bitcoin wallet", "--label", help="Wallet label."),
+    label: str = typer.Option("Recovered wallet", "--label", help="Wallet label."),
+    network: str = typer.Option("bitcoin", "--network", help="bitcoin, ethereum, or solana."),
 ) -> None:
-    """Import an English BIP-39 phrase into an encrypted vault and derive its address."""
+    """Import a BIP-39 phrase into an encrypted vault for a supported chain."""
     if not vault.is_file():
         console.print(f"[red]Vault file does not exist:[/] {vault}")
         raise typer.Exit(code=1)
+    network_map = {
+        "bitcoin": "bitcoin-mainnet", "bitcoin-mainnet": "bitcoin-mainnet",
+        "ethereum": "ethereum-mainnet", "ethereum-mainnet": "ethereum-mainnet",
+        "solana": "solana-mainnet", "solana-mainnet": "solana-mainnet",
+    }
+    canonical_network = network_map.get(network.strip().lower())
+    if canonical_network is None:
+        console.print("[red]Supported seed-based wallets: bitcoin, ethereum, solana.[/]")
+        raise typer.Exit(code=2)
     mnemonic = typer.prompt("Recovery phrase (English BIP-39; input hidden)", hide_input=True)
     password = typer.prompt("Vault password", hide_input=True)
     try:
-        summary = add_bitcoin_wallet(vault, password, label=label, mnemonic=mnemonic)
+        if canonical_network == "bitcoin-mainnet":
+            summary = add_bitcoin_wallet(vault, password, label=label, mnemonic=mnemonic)
+        else:
+            summary = add_multichain_wallet(
+                vault, password, label=label, network=canonical_network, mnemonic=mnemonic
+            )
     except (OSError, ValueError) as exc:
         console.print(f"[red]Wallet recovery failed:[/] {exc}")
         raise typer.Exit(code=1) from exc
@@ -368,10 +443,8 @@ def wallet_recover(
         f"[bold]Receive address:[/] [cyan]{summary.address}[/]\n"
         f"[bold]Derivation path:[/] {summary.derivation_path}\n"
         f"[bold]Wallet ID:[/] {summary.wallet_id}",
-        title="Bitcoin wallet recovered",
-        border_style="green",
+        title="Wallet recovered", border_style="green",
     ))
-    console.print("[dim]The recovery phrase was stored only inside the encrypted vault.[/]")
 
 
 @wallet_app.command("list")
@@ -679,6 +752,407 @@ def _run_evm_balance(
         "[dim]This is a provider-supplied read-only result, not a proof of ownership. "
         "Vaultsh does not derive EVM private keys, query ERC-20 token balances, or send transactions.[/]"
     )
+
+
+@wallet_app.command("qr")
+def wallet_qr(
+    wallet_id: str = typer.Argument(..., help="Wallet ID from `vaultsh wallet list`."),
+    vault: Path = typer.Option(..., "--vault", "-v", help="Encrypted vault file."),
+    output: Path | None = typer.Option(None, "--output", help="Optional new PNG output path."),
+) -> None:
+    """Show the QR for a public address stored in the encrypted vault."""
+    password = typer.prompt("Vault password", hide_input=True)
+    try:
+        records = list_wallets(vault, password)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Could not read vault:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+    wallet = next((record for record in records if record.wallet_id == wallet_id), None)
+    if wallet is None:
+        console.print("[red]Wallet ID was not found in this vault.[/]")
+        raise typer.Exit(code=1)
+    try:
+        if output is not None:
+            result_path = save_address_qr(wallet.address, output)
+            console.print(f"[green]Public address QR saved:[/] {escape(str(result_path))}")
+        console.print(Panel(render_address_qr(wallet.address), title=f"{wallet.network} — public address QR", border_style="orange"))
+        console.print(f"[bold]Address:[/] {escape(wallet.address)}")
+        console.print("[dim]This QR contains only the public receive address, never a recovery phrase or private key.[/]")
+    except (QrError, OSError, ValueError) as exc:
+        console.print(f"[red]Could not render QR:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("qr")
+def qr_address(
+    address: str = typer.Argument(..., help="Public blockchain address to encode."),
+    output: Path | None = typer.Option(None, "--output", help="Optional new PNG output path."),
+) -> None:
+    """Render a QR for any public address; no private information is accepted."""
+    try:
+        if output is not None:
+            result_path = save_address_qr(address, output)
+            console.print(f"[green]Public address QR saved:[/] {escape(str(result_path))}")
+        console.print(Panel(render_address_qr(address), title="Public address QR", border_style="orange"))
+        console.print(f"[bold]Address:[/] {escape(address)}")
+    except (QrError, OSError, ValueError) as exc:
+        console.print(f"[red]QR generation failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+
+
+def _load_network_settings(config_path: Path, allow_network: bool) -> AppConfig:
+    """Enforce config + per-command consent and refuse unsupported Tor transport."""
+    settings = load_config(config_path)
+    require_network_access(
+        explicitly_requested=allow_network,
+        configured=settings.network_requests_enabled,
+    )
+    if settings.tor_enabled:
+        raise NetworkAccessDenied(
+            "Tor is enabled in the Vaultsh config, but this release does not implement Tor transport. "
+            "No connection was made. Disable tor_enabled or use a separately verified Tor setup."
+        )
+    return settings
+
+
+def _confirm_transfer(
+    *, symbol: str, amount: str, destination: str, fee: str | None = None
+) -> bool:
+    """Require a typed, exact confirmation that includes the shown fee estimate."""
+    phrase = f"SEND {symbol} {amount} TO {destination}"
+    fee_line = ""
+    if fee is not None:
+        phrase += f" WITH FEE UP TO {fee} {symbol}"
+        fee_line = f"\nFee (maximum/estimated): [bold]{escape(fee)} {escape(symbol)}[/]"
+    console.print(Panel(
+        f"[bold yellow]You are about to broadcast a real blockchain transaction.[/]\n\n"
+        f"Asset: [bold]{escape(symbol)}[/]\nAmount: [bold]{escape(amount)}[/]\n"
+        f"Destination: [bold]{escape(destination)}[/]{fee_line}\n\n"
+        f"Type exactly:\n[bold red]{escape(phrase)}[/]",
+        title="FINAL TRANSFER CONFIRMATION", border_style="red", padding=(1, 2),
+    ))
+    try:
+        typed = typer.prompt("Confirmation", default="")
+    except (EOFError, typer.Abort):
+        return False
+    return typed == phrase
+
+
+@bitcoin_app.command("send")
+def bitcoin_send(
+    wallet_id: str = typer.Option(..., "--wallet-id", help="Bitcoin wallet ID stored in the vault."),
+    vault: Path = typer.Option(..., "--vault", help="Encrypted Vaultsh wallet file."),
+    destination: str = typer.Option(..., "--to", help="Bitcoin Mainnet recipient address."),
+    amount: str = typer.Option(..., "--amount", help="BTC amount, up to 8 decimal places."),
+    endpoint: str = typer.Option(..., "--endpoint", help="Explicit Esplora API base URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing network access."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize this operation to access the network."),
+    max_fee_sats: int = typer.Option(100_000, "--max-fee-sats", min=1, max=10_000_000, help="Maximum accepted fee in satoshis."),
+) -> None:
+    """Prepare, locally sign, preview, and explicitly broadcast a Bitcoin Mainnet payment."""
+    password = typer.prompt("Vault password", hide_input=True)
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        record = get_wallet_record(vault, password, wallet_id)
+        if record.get("network") != "bitcoin-mainnet":
+            raise NetworkError("Selected wallet is not a Bitcoin Mainnet wallet")
+        client = BitcoinPaymentClient(endpoint, timeout_seconds=settings.request_timeout_seconds)
+        utxos = client.get_confirmed_utxos(record["address"])
+        fee_rate = client.get_fee_rate()
+        preview = prepare_bitcoin_transfer(
+            mnemonic=record["mnemonic"], expected_sender=record["address"], destination=destination,
+            amount=amount, utxos=utxos, fee_rate_sat_vb=fee_rate, max_fee_sats=max_fee_sats,
+        )
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Bitcoin transfer preparation failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel(
+        f"Network: Bitcoin Mainnet\nFrom: {preview.sender}\nTo: {preview.destination}\n"
+        f"Amount: {format_btc(preview.amount_sats)} BTC\nEstimated/final fee: {format_btc(preview.fee_sats)} BTC ({preview.fee_sats} sats)\n"
+        f"Confirmed inputs: {preview.input_count}\nChange: {format_btc(preview.change_sats)} BTC\n"
+        f"Locally signed transaction ID preview: {preview.txid}",
+        title="Review Bitcoin transaction", border_style="orange",
+    ))
+    console.print("[yellow]Privacy: this query sends your address to the selected Esplora endpoint. Tor is not used.[/]")
+    console.print(Panel(
+        "CRITICAL BETA LIMITATION: Vaultsh only discovers confirmed UTXOs at the first receive address. "
+        "Change is sent to BIP-84 path m/84'/0'/0'/1/0, which this release does not scan. "
+        "Do not use this send command with real funds. The recovery phrase can recover the change in a compatible wallet.",
+        title="Bitcoin send warning", border_style="red",
+    ))
+    if not _confirm_transfer(symbol="BTC", amount=format_btc(preview.amount_sats), destination=preview.destination, fee=format_btc(preview.fee_sats)):
+        console.print("[dim]Cancelled. The transaction was not broadcast.[/]")
+        return
+    try:
+        txid = client.broadcast(preview.raw_transaction_hex)
+    except NetworkError as exc:
+        console.print(f"[red]Broadcast failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel.fit(f"[green]Transaction submitted.[/]\nTXID: {txid}", title="Bitcoin payment", border_style="green"))
+
+
+@ethereum_app.command("send")
+def ethereum_send(
+    wallet_id: str = typer.Option(..., "--wallet-id", help="Ethereum Mainnet wallet ID in the vault."),
+    vault: Path = typer.Option(..., "--vault", help="Encrypted Vaultsh wallet file."),
+    destination: str = typer.Option(..., "--to", help="Ethereum 0x destination address."),
+    amount: str = typer.Option(..., "--amount", help="ETH amount, up to 18 decimal places."),
+    endpoint: str = typer.Option(..., "--endpoint", help="Explicit Ethereum Mainnet JSON-RPC URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing network access."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize this operation to access the network."),
+    max_fee_eth: str = typer.Option("0.1", "--max-fee-eth", help="Maximum fee cap in ETH."),
+) -> None:
+    """Prepare, locally sign, preview, and explicitly broadcast a native ETH payment."""
+    password = typer.prompt("Vault password", hide_input=True)
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        record = get_wallet_record(vault, password, wallet_id)
+        if record.get("network") != "ethereum-mainnet":
+            raise NetworkError("Selected wallet is not an Ethereum Mainnet wallet")
+        profile = get_evm_network_profile("ethereum")
+        client = EvmJsonRpcClient(
+            endpoint, timeout_seconds=settings.request_timeout_seconds,
+            expected_chain_id=profile.chain_id, network_name=profile.name, asset_symbol=profile.asset_symbol,
+        )
+        preview = prepare_evm_transfer(
+            endpoint=endpoint, network="ethereum", mnemonic=record["mnemonic"], expected_sender=record["address"],
+            destination=destination, amount=amount, timeout_seconds=settings.request_timeout_seconds,
+            max_fee_native=max_fee_eth, client=client,
+        )
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Ethereum transfer preparation failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel(
+        f"Network: {preview.network_name} (chain ID {preview.chain_id})\nFrom: {preview.sender}\nTo: {preview.destination}\n"
+        f"Amount: {format_native_asset(preview.amount_base_units)} ETH\nMaximum fee: {format_native_asset(preview.max_fee_wei)} ETH\nNonce: {preview.nonce}",
+        title="Review ETH transaction", border_style="orange",
+    ))
+    console.print("[yellow]The endpoint sees the queried address and connection metadata. Tor is not used.[/]")
+    if not _confirm_transfer(symbol="ETH", amount=format_native_asset(preview.amount_base_units), destination=preview.destination, fee=format_native_asset(preview.max_fee_wei)):
+        console.print("[dim]Cancelled. The transaction was not broadcast.[/]")
+        return
+    try:
+        tx_hash = broadcast_evm_transfer(preview, client=client)
+    except NetworkError as exc:
+        console.print(f"[red]ETH broadcast failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel.fit(f"[green]Transaction submitted.[/] TX hash: {tx_hash}", title="Ethereum payment", border_style="green"))
+
+
+solana_app = typer.Typer(help="Solana Mainnet balance and native SOL transfers.", no_args_is_help=True)
+app.add_typer(solana_app, name="solana")
+
+
+@solana_app.command("balance")
+def solana_balance(
+    address: str = typer.Argument(..., help="Solana Mainnet public address."),
+    endpoint: str = typer.Option(..., "--endpoint", help="Explicit Solana Mainnet JSON-RPC URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing network access."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize the network query."),
+) -> None:
+    """Query native SOL balance from a user-selected Mainnet RPC endpoint."""
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        client = SolanaRpcClient(endpoint, timeout_seconds=settings.request_timeout_seconds)
+        balance = client.get_balance(address)
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Solana balance query failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"Address: {escape(address)}\nBalance: {format_sol(balance)} SOL ({balance} lamports)")
+
+
+@solana_app.command("send")
+def solana_send(
+    wallet_id: str = typer.Option(..., "--wallet-id", help="Solana Mainnet wallet ID in the vault."),
+    vault: Path = typer.Option(..., "--vault", help="Encrypted Vaultsh wallet file."),
+    destination: str = typer.Option(..., "--to", help="Solana recipient public key."),
+    amount: str = typer.Option(..., "--amount", help="SOL amount, up to 9 decimal places."),
+    endpoint: str = typer.Option(..., "--endpoint", help="Explicit Solana Mainnet JSON-RPC URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing network access."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize this operation to access the network."),
+    max_fee_sol: str = typer.Option("0.01", "--max-fee-sol", help="Maximum fee cap in SOL."),
+) -> None:
+    """Prepare, locally sign, preview, and explicitly broadcast a native SOL payment."""
+    password = typer.prompt("Vault password", hide_input=True)
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        record = get_wallet_record(vault, password, wallet_id)
+        if record.get("network") != "solana-mainnet":
+            raise NetworkError("Selected wallet is not a Solana Mainnet wallet")
+        client = SolanaRpcClient(endpoint, timeout_seconds=settings.request_timeout_seconds)
+        preview = client.prepare_transfer(
+            mnemonic=record["mnemonic"], expected_sender=record["address"], destination=destination,
+            amount=amount, max_fee_sol=max_fee_sol,
+        )
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Solana transfer preparation failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel(
+        f"Network: Solana Mainnet Beta\nFrom: {preview.sender}\nTo: {preview.destination}\n"
+        f"Amount: {format_sol(preview.lamports)} SOL\nFee: {format_sol(preview.fee_lamports)} SOL ({preview.fee_lamports} lamports)\n"
+        f"Blockhash: {preview.blockhash}", title="Review SOL transaction", border_style="orange",
+    ))
+    if not _confirm_transfer(symbol="SOL", amount=format_sol(preview.lamports), destination=preview.destination, fee=format_sol(preview.fee_lamports)):
+        console.print("[dim]Cancelled. The transaction was not broadcast.[/]")
+        return
+    try:
+        signature = client.broadcast_transfer(preview)
+    except NetworkError as exc:
+        console.print(f"[red]Solana broadcast failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel.fit(f"[green]Transaction submitted.[/] Signature: {signature}", title="Solana payment", border_style="green"))
+
+
+monero_app = typer.Typer(help="Monero via a locally running official monero-wallet-rpc service.", no_args_is_help=True)
+app.add_typer(monero_app, name="monero")
+
+
+def _monero_client(rpc_url: str, timeout: float, username: str | None) -> MoneroWalletRpcClient:
+    rpc_password = None
+    if username:
+        rpc_password = typer.prompt("Monero wallet RPC password", hide_input=True)
+    return MoneroWalletRpcClient(rpc_url, timeout_seconds=timeout, username=username, password=rpc_password)
+
+
+@monero_app.command("create-wallet")
+def monero_create_wallet(
+    name: str = typer.Argument(..., help="Wallet filename within monero-wallet-rpc's configured wallet directory."),
+    rpc_url: str = typer.Option("http://127.0.0.1:18082/json_rpc", "--rpc-url", help="Loopback monero-wallet-rpc URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing wallet RPC calls."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize the local wallet RPC call."),
+    rpc_username: str | None = typer.Option(None, "--rpc-username", help="Optional monero-wallet-rpc digest-auth user."),
+) -> None:
+    """Create a Monero wallet using the official locally running monero-wallet-rpc."""
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        client = _monero_client(rpc_url, settings.request_timeout_seconds, rpc_username)
+        wallet_password = typer.prompt("New Monero wallet password", hide_input=True)
+        confirmation = typer.prompt("Repeat Monero wallet password", hide_input=True)
+        if wallet_password != confirmation:
+            raise NetworkError("Wallet passwords do not match; no wallet was created")
+        if len(wallet_password) < 12:
+            raise NetworkError("Use a Monero wallet password of at least 12 characters")
+        client.create_wallet(name, wallet_password, language="English")
+        address = client.get_address()
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Monero wallet creation failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel.fit(
+        f"[green]Monero wallet created by the official local wallet RPC.[/]\n"
+        f"Wallet name: {escape(name)}\nAddress: {escape(address)}\n"
+        "The Monero seed and wallet file are managed by monero-wallet-rpc, not stored in Vaultsh's encrypted vault.",
+        title="Monero wallet created", border_style="green",
+    ))
+
+
+@monero_app.command("open-wallet")
+def monero_open_wallet(
+    name: str = typer.Argument(..., help="Wallet filename within monero-wallet-rpc's configured wallet directory."),
+    rpc_url: str = typer.Option("http://127.0.0.1:18082/json_rpc", "--rpc-url", help="Loopback monero-wallet-rpc URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing wallet RPC calls."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize the local wallet RPC call."),
+    rpc_username: str | None = typer.Option(None, "--rpc-username", help="Optional monero-wallet-rpc digest-auth user."),
+) -> None:
+    """Open a Monero wallet file managed by the locally running wallet RPC."""
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        client = _monero_client(rpc_url, settings.request_timeout_seconds, rpc_username)
+        wallet_password = typer.prompt("Monero wallet password", hide_input=True)
+        client.open_wallet(name, wallet_password)
+        address = client.get_address()
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Monero wallet open failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]Opened Monero wallet:[/] {escape(name)}\nAddress: {escape(address)}")
+
+
+@monero_app.command("close-wallet")
+def monero_close_wallet(
+    rpc_url: str = typer.Option("http://127.0.0.1:18082/json_rpc", "--rpc-url", help="Loopback monero-wallet-rpc URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing wallet RPC calls."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize the local wallet RPC call."),
+    rpc_username: str | None = typer.Option(None, "--rpc-username", help="Optional monero-wallet-rpc digest-auth user."),
+) -> None:
+    """Close the currently open local Monero wallet through wallet RPC."""
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        _monero_client(rpc_url, settings.request_timeout_seconds, rpc_username).close_wallet()
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Monero wallet close failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print("[green]Monero wallet closed.[/]")
+
+
+@monero_app.command("address")
+def monero_address(
+    rpc_url: str = typer.Option("http://127.0.0.1:18082/json_rpc", "--rpc-url", help="Loopback monero-wallet-rpc URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing wallet RPC calls."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize the local wallet RPC call."),
+    rpc_username: str | None = typer.Option(None, "--rpc-username", help="Optional monero-wallet-rpc digest-auth user."),
+) -> None:
+    """Show the primary address from the locally opened Monero wallet."""
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        address = _monero_client(rpc_url, settings.request_timeout_seconds, rpc_username).get_address()
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Monero RPC failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"Monero primary address: {escape(address)}")
+    console.print("Use `vaultsh qr ADDRESS` to show or save its public address QR.")
+
+
+@monero_app.command("balance")
+def monero_balance(
+    rpc_url: str = typer.Option("http://127.0.0.1:18082/json_rpc", "--rpc-url", help="Loopback monero-wallet-rpc URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing wallet RPC calls."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize the local wallet RPC call."),
+    rpc_username: str | None = typer.Option(None, "--rpc-username", help="Optional monero-wallet-rpc digest-auth user."),
+) -> None:
+    """Show Monero balance from a locally running official wallet RPC service."""
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        balance, unlocked = _monero_client(rpc_url, settings.request_timeout_seconds, rpc_username).get_balance()
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Monero balance failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"Total: {format_xmr(balance)} XMR\nUnlocked: {format_xmr(unlocked)} XMR")
+    console.print("[dim]Balance visibility depends on the node/wallet synchronization state.[/]")
+
+
+@monero_app.command("send")
+def monero_send(
+    destination: str = typer.Option(..., "--to", help="Monero Mainnet destination address."),
+    amount: str = typer.Option(..., "--amount", help="XMR amount, up to 12 decimal places."),
+    rpc_url: str = typer.Option("http://127.0.0.1:18082/json_rpc", "--rpc-url", help="Loopback monero-wallet-rpc URL."),
+    config_path: Path = typer.Option(Path("./vaultsh.toml"), "--config", help="Config allowing wallet RPC calls."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Authorize wallet RPC and relay."),
+    rpc_username: str | None = typer.Option(None, "--rpc-username", help="Optional monero-wallet-rpc digest-auth user."),
+) -> None:
+    """Prepare XMR transfer through monero-wallet-rpc, then relay only after typed confirmation."""
+    try:
+        settings = _load_network_settings(config_path, allow_network)
+        client = _monero_client(rpc_url, settings.request_timeout_seconds, rpc_username)
+        source = client.get_address()
+        preview = client.prepare_transfer(destination=destination, amount=amount)
+    except (ConfigError, NetworkAccessDenied, NetworkError, OSError, ValueError) as exc:
+        console.print(f"[red]Monero transfer preparation failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel(
+        f"Network: Monero Mainnet\nFrom: {source}\nTo: {preview.destination}\n"
+        f"Amount: {format_xmr(preview.amount_atomic)} XMR\nFee: {format_xmr(preview.fee_atomic)} XMR\n"
+        f"Total debit: {format_xmr(preview.amount_atomic + preview.fee_atomic)} XMR\nTX hash: {preview.tx_hash}",
+        title="Review XMR transaction", border_style="orange",
+    ))
+    console.print("[yellow]The Monero wallet RPC process creates/signs this transaction. Verify its configuration and daemon before confirming.[/]")
+    if not _confirm_transfer(symbol="XMR", amount=format_xmr(preview.amount_atomic), destination=preview.destination, fee=format_xmr(preview.fee_atomic)):
+        console.print("[dim]Cancelled. The transaction was not relayed.[/]")
+        return
+    try:
+        tx_hash = client.relay_transfer(preview)
+    except NetworkError as exc:
+        console.print(f"[red]Monero relay failed:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+    console.print(Panel.fit(f"[green]Transaction relayed.[/] TX hash: {tx_hash}", title="Monero payment", border_style="green"))
 
 
 @app.command()

@@ -1,63 +1,63 @@
-# Referencja wiersza poleceń (CLI)
+# Referencja CLI — Vaultsh 1.0.0-beta.1
 
-**🌐 Język:** [English](../CLI_REFERENCE.md) · [Polski](CLI_REFERENCE.md) · [Русский](../ru/CLI_REFERENCE.md) · [README](../../README.pl.md)
+Sprawdź `vaultsh --help` i `vaultsh COMMAND --help`. Opcje językowe `--lang pl` / `--lang ru` podaj przed komendą.
 
-## Język interfejsu
+## Konfiguracja i sejf
+```bash
+vaultsh config-init ./vaultsh.toml
+vaultsh config-check ./vaultsh.toml
+vaultsh vault init ./main.vault --label "Mój sejf"
+vaultsh vault check ./main.vault
+vaultsh vault backup ./main.vault ./main.backup
+vaultsh vault restore ./main.backup ./restored.vault
+```
 
-Opcję języka umieść przed poleceniem: `vaultsh --lang pl`, `vaultsh --lang ru about` albo `vaultsh --lang en networks`. Dostępne kody: `en`, `pl`, `ru`. W bieżącej wersji tłumaczone są ekran startowy i główne ekrany informacyjne. Szczegółowa pomoc podkomend, część promptów i niektóre błędy nadal są po angielsku.
+## Portfele i QR
+```bash
+vaultsh wallet create --vault ./main.vault --label BTC --network bitcoin
+vaultsh wallet create --vault ./main.vault --label ETH --network ethereum
+vaultsh wallet create --vault ./main.vault --label SOL --network solana
+vaultsh wallet recover --vault ./main.vault --network ethereum
+vaultsh wallet list --vault ./main.vault
+vaultsh wallet recovery-phrase --vault ./main.vault --wallet-id WALLET_ID
+vaultsh wallet qr --vault ./main.vault --wallet-id WALLET_ID --output ./address.png
+vaultsh qr PUBLIC_ADDRESS --output ./address.png
+```
 
-## Polecenia ogólne
+## Zgoda sieciowa
+W TOML ustaw `network_requests_enabled = true`; do każdej operacji dodaj jawny endpoint oraz `--config ./vaultsh.toml --allow-network`. `tor_enabled=true` blokuje żądania, bo transport Tor nie działa.
 
-- `vaultsh` — panel startowy z grupami poleceń i szybkim startem.
-- `vaultsh version` — wersja pakietu.
-- `vaultsh about` — zakres implementacji i ograniczenia.
-- `vaultsh networks` — obsługiwane oraz planowane sieci.
-- `vaultsh privacy` — domyślne ustawienia prywatności.
-- `vaultsh config` — domyślne ustawienia bez sekretów.
+## BTC
+```bash
+vaultsh bitcoin balance ADDRESS --endpoint https://YOUR-ESPLORA/api --config ./vaultsh.toml --allow-network
+vaultsh bitcoin history ADDRESS --endpoint https://YOUR-ESPLORA/api --config ./vaultsh.toml --allow-network --limit 10
+vaultsh bitcoin send --wallet-id WALLET_ID --vault ./main.vault --to bc1qRECIPIENT --amount 0.0001 --endpoint https://YOUR-ESPLORA/api --config ./vaultsh.toml --allow-network --max-fee-sats 100000
+```
+**Nie używaj BTC send z prawdziwymi środkami:** kod nie odkrywa UTXO spoza pierwszego adresu odbiorczego, a reszta trafia na `/1/0`, którego nie skanuje.
 
-## Konfiguracja
+## ETH i inne EVM
+```bash
+vaultsh ethereum balance 0xADDRESS --endpoint https://YOUR-ETH-RPC --config ./vaultsh.toml --allow-network
+vaultsh ethereum send --wallet-id WALLET_ID --vault ./main.vault --to 0xRECIPIENT --amount 0.001 --endpoint https://YOUR-ETH-RPC --config ./vaultsh.toml --allow-network --max-fee-eth 0.1
+vaultsh evm balance 0xADDRESS --chain polygon --endpoint https://YOUR-RPC --config ./vaultsh.toml --allow-network
+```
+Wysyłanie tylko natywnego ETH na Mainnet, przez legacy gasPrice. Pozostałe EVM są tylko do odczytu.
 
-- `vaultsh config-init PATH [--force]` — utwórz niesekretny szablon TOML; bez `--force` istniejący plik nie jest nadpisywany.
-- `vaultsh config-check PATH` — wczytaj i zweryfikuj TOML bez wyświetlania sekretów.
+## Solana
+```bash
+vaultsh solana balance SOL_ADDRESS --endpoint https://YOUR-SOL-RPC --config ./vaultsh.toml --allow-network
+vaultsh solana send --wallet-id WALLET_ID --vault ./main.vault --to SOL_RECIPIENT --amount 0.01 --endpoint https://YOUR-SOL-RPC --config ./vaultsh.toml --allow-network --max-fee-sol 0.01
+```
+Tylko natywne SOL. Podpis RPC oznacza wysłanie do endpointu, nie finalność.
 
-## Sejf
-
-- `vaultsh vault init PATH [--label LABEL]` — utwórz nowy zaszyfrowany sejf; hasło jest ukryte i wymaga potwierdzenia.
-- `vaultsh vault check PATH` — odszyfruj i sprawdź dokument sejfu.
-- `vaultsh vault backup SOURCE DESTINATION [--overwrite]` — skopiuj zaszyfrowany plik.
-- `vaultsh vault restore SOURCE DESTINATION [--overwrite]` — odtwórz kopię; potem użyj `vault check`, aby zweryfikować hasło.
-
-## Portfel Bitcoin
-
-- `vaultsh wallet create --vault PATH [--label LABEL]` — utwórz portfel Mainnet offline i pokaż frazę odzyskiwania.
-- `vaultsh wallet recover --vault PATH [--label LABEL]` — importuj angielską frazę BIP-39.
-- `vaultsh wallet list --vault PATH` — pokaż publiczne metadane bez frazy.
-- `vaultsh wallet recovery-phrase WALLET_ID --vault PATH` — pokaż frazę po jawnym potwierdzeniu i odblokowaniu sejfu.
-
-## Zapytania Bitcoin tylko do odczytu
-
-- `vaultsh bitcoin balance ADDRESS --endpoint URL --config PATH --allow-network` — saldo jednego adresu.
-- `vaultsh bitcoin history ADDRESS --endpoint URL --config PATH [--limit N] --allow-network` — pierwsza strona historii adresu, maksymalnie 25 rekordów.
-
-## Zapytania salda EVM tylko do odczytu
-
-- `vaultsh ethereum balance ADDRESS --endpoint URL --config PATH --allow-network` — skrót dla Ethereum Mainnet.
-- `vaultsh evm balance ADDRESS --chain NETWORK --endpoint URL --config PATH --allow-network` — obsługiwane wartości `--chain`: `ethereum`, `polygon`, `arbitrum`, `optimism`, `base`.
-
-| Sieć | Chain ID | Aktywo |
-|---|---:|---|
-| Ethereum Mainnet | `1` | ETH |
-| Polygon PoS | `137` | POL |
-| Arbitrum One | `42161` | ETH |
-| Optimism | `10` | ETH |
-| Base | `8453` | ETH |
-
-## Zachowanie operacyjne
-
-- Program nie wybiera automatycznie publicznego dostawcy.
-- Każde zapytanie wymaga zgody w TOML oraz `--allow-network`.
-- Zdalny endpoint musi używać HTTPS; HTTP jest dopuszczony jedynie dla localhost/loopback.
-- Przekierowania i proxy z automatycznych zmiennych środowiskowych są wyłączone.
-- Odpowiedzi, ID JSON-RPC, schematy, ilości, adresy i identyfikatory łańcucha są walidowane.
-- Błędy kończą się kodem niezerowym. Teksty błędów nie są stabilnym API w wersji pre-alpha.
-- Wynik dostawcy nie jest dowodem własności ani kryptograficznym dowodem salda.
+## Monero (oficjalny lokalny RPC)
+Zainstaluj i poprawnie skonfiguruj `monero-wallet-rpc`; port 18082 musi być wyłącznie na loopback.
+```bash
+vaultsh monero create-wallet MY_WALLET --config ./vaultsh.toml --allow-network
+vaultsh monero open-wallet MY_WALLET --config ./vaultsh.toml --allow-network
+vaultsh monero address --config ./vaultsh.toml --allow-network
+vaultsh monero balance --config ./vaultsh.toml --allow-network
+vaultsh monero send --to XMR_MAINNET_ADDRESS --amount 0.01 --config ./vaultsh.toml --allow-network
+vaultsh monero close-wallet --config ./vaultsh.toml --allow-network
+```
+Pliki/seedy XMR pozostają pod kontrolą `monero-wallet-rpc`, poza sejfem Vaultsh. Nadawanie wymaga podglądu i dokładnego tekstowego potwierdzenia.

@@ -1,32 +1,15 @@
-# Architektura
+# Architektura — Vaultsh 1.0.0-beta.1
 
-**🌐 Język:** [English](../ARCHITECTURE.md) · [Polski](ARCHITECTURE.md) · [Русский](../ru/ARCHITECTURE.md) · [README](../../README.pl.md)
+- `cli.py`: Typer komendy, przegląd operacji, dokładne tekstowe potwierdzenie przed broadcast/relay.
+- `ui/`: Textual TUI, Rich fallback, EN/PL/RU, helpery QR/prompt.
+- `crypto/`: Scrypt + AES-256-GCM oraz narzędzia derivacji.
+- `storage/`: dokument sejfu, szyfrowane rekordy, backup/restore.
+- `networks/bitcoin/`: BIP84, Esplora queries, ograniczony coin selection, lokalny podpis P2WPKH, broadcast.
+- `networks/ethereum/`: JSON-RPC oraz lokalne podpisanie legacy EIP-155 tylko ETH Mainnet.
+- `networks/solana/`: JSON-RPC Mainnet, native SOL, `solders`.
+- `networks/monero/`: loopback-only klient oficjalnego `monero-wallet-rpc`; XMR wallet files/seed i podpis są zarządzane przez ten proces.
+- `privacy/network_policy.py`: wymagane zezwolenie TOML plus `--allow-network`. Tor nie jest transportem zaimplementowanym.
 
-## Układ źródeł
+Wysyłanie BTC/ETH/SOL: odczyt portfela z sejfu, zapytania do jawnego endpointu, budowa/podpis lokalny, podgląd adresu/kwoty/opłaty i exact typed confirmation, a dopiero potem broadcast. XMR: RPC przygotowuje transakcję bez relay; po potwierdzeniu przekazywane są metadane do `relay_tx`.
 
-Kod aplikacji znajduje się w `src/vaultsh/`, a testy w `tests/`. Główne moduły: `cli.py`, `config.py`, `core/`, `crypto/`, `storage/`, `networks/`, `privacy/` i `ui/`.
-
-## Granice odpowiedzialności
-
-- **CLI (`cli.py`)** — parsowanie poleceń, pytania do użytkownika, formatowanie wyników i kody wyjścia. Nie powinien implementować kryptografii ani protokołów sieciowych.
-- **Konfiguracja (`config.py`)** — waliduje niesekretne preferencje z TOML. Nie przechowuje haseł, fraz ani kluczy.
-- **Kryptografia i magazyn (`crypto/`, `storage/`)** — szyfrowanie uwierzytelnione, format dokumentu sejfu, atomowe zapisy oraz kopie zapasowe.
-- **Model domeny (`core/`)** — wspólne typy i reguły walidacji niezależne od interfejsu.
-- **Adaptery (`networks/`)** — standardy specyficzne dla sieci i komunikacja. Bitcoin i EVM nie mogą współdzielić założeń dotyczących derivacji, adresów, jednostek lub transakcji.
-- **Prywatność (`privacy/`)** — polityka dostępu do sieci oraz ustawienia Tor. Flaga Tor nie oznacza działającego transportu.
-- **UI (`ui/`)** — panele Rich, ekrany startowe i tłumaczenia głównego interfejsu.
-
-## Adaptery dostępne obecnie
-
-`networks/bitcoin/wallet.py` używa `embit` do angielskich fraz BIP-39 i pierwszego adresu BIP-84 Mainnet. `networks/bitcoin/client.py` odczytuje saldo i pierwszą stronę historii pojedynczego adresu Esplora. `networks/ethereum/client.py` ma listę pięciu profili EVM, waliduje adresy i checksumę EIP-55 oraz sprawdza `eth_chainId` przed `eth_getBalance`. Nie tworzy kluczy EVM.
-
-## Kierunek zależności
-
-UI może wywoływać funkcje domenowe i adaptery, lecz logika domenowa nie powinna zależeć od CLI. Adaptery nie powinny modyfikować konfiguracji ani zapisywać sekretów samodzielnie. Testy jednostkowe sieci używają fałszywych odpowiedzi — nie łączą się z publicznymi usługami.
-
-## Zasady rozbudowy
-
-- Dodaj sieć dopiero po wskazaniu standardów, jednostek, formatu adresów i oficjalnych wektorów testowych.
-- Waliduj i przeliczaj wartości finansowe na liczbach całkowitych w najmniejszych jednostkach.
-- Dodaj testy błędnych i złośliwych odpowiedzi, limitów, przekierowań oraz odmowy dostępu do sieci bez zgody.
-- Nie deklaruj implementacji tylko dlatego, że istnieje folder lub protokół bazowy.
+**Krytyczne ograniczenie BTC:** wyszukiwanie UTXO obejmuje tylko potwierdzone UTXO pierwszego adresu receive. Reszta trafia na `/1/0`, którego Vaultsh nie skanuje. Nie używaj wysyłania BTC z prawdziwymi środkami.
