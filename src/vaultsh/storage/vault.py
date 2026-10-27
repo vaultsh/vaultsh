@@ -20,8 +20,14 @@ class VaultError(ValueError):
     """Raised when a vault file is invalid or exceeds supported limits."""
 
 
-def write_vault(path: str | Path, plaintext: bytes, password: str) -> None:
-    """Encrypt and atomically write ``plaintext`` to ``path``."""
+def write_vault(
+    path: str | Path, plaintext: bytes, password: str, *, overwrite: bool = False
+) -> None:
+    """Encrypt and atomically write ``plaintext`` to ``path``.
+
+    Existing files are protected by default. Set ``overwrite=True`` only when
+    replacing a known vault is intentional.
+    """
     if not isinstance(plaintext, bytes):
         raise TypeError("plaintext must be bytes")
     if len(plaintext) > MAX_VAULT_FILE_SIZE:
@@ -30,7 +36,7 @@ def write_vault(path: str | Path, plaintext: bytes, password: str) -> None:
     encrypted = encrypt_bytes(plaintext, password)
     if len(encrypted) > MAX_VAULT_FILE_SIZE:
         raise VaultError("Encrypted vault is larger than the supported size limit")
-    _atomic_write(target, encrypted)
+    _atomic_write(target, encrypted, overwrite=overwrite)
 
 
 def read_vault(path: str | Path, password: str) -> bytes:
@@ -48,7 +54,7 @@ def read_vault(path: str | Path, password: str) -> bytes:
         raise VaultError("Unable to decrypt vault file (wrong password or invalid file)") from exc
 
 
-def _atomic_write(target: Path, data: bytes) -> None:
+def _atomic_write(target: Path, data: bytes, *, overwrite: bool) -> None:
     parent = target.parent
     try:
         parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +69,14 @@ def _atomic_write(target: Path, data: bytes) -> None:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary_path, target)
+            if overwrite:
+                os.replace(temporary_path, target)
+            else:
+                # Hard-linking is atomic and fails if another process created the
+                # destination after the initial existence check. The temporary
+                # file is in the same directory/filesystem by construction.
+                os.link(temporary_path, target)
+                temporary_path.unlink()
             if os.name != "nt":
                 os.chmod(target, 0o600)
             # Persist directory metadata where supported.
