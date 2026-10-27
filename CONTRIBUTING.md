@@ -52,8 +52,8 @@ Write in English so commit history remains consistent across contributors. Use i
 🧪 Add BIP-84 address derivation vectors
 📝 Document encrypted vault schema v2
 ♻️ Extract wallet record validation helper
-🔄 Update release metadata to 0.4.0
-🚀 Release Vaultsh 0.4.0
+🔄 Update release metadata to 0.4.5
+🚀 Release Vaultsh 0.4.5
 ```
 
 ## Changelog format

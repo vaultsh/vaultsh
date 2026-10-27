@@ -1,6 +1,6 @@
 # Encrypted vault format
 
-This page documents the current local file format as implemented in Vaultsh 0.3.0. It is useful for maintainers and test authors, not an endorsement of the format for production use. The format has not received an independent cryptographic or interoperability audit and may change while the project is pre-alpha.
+This page documents the current local file format as implemented in Vaultsh 0.4.5. It is useful for maintainers and test authors, not an endorsement of the format for production use. The format has not received an independent cryptographic or interoperability audit and may change while the project is pre-alpha.
 
 ## File layers
 
@@ -78,7 +78,7 @@ Duplicate wallet IDs and duplicate addresses are rejected. This initial schema d
 
 Opening or checking a v1 vault does not migrate it. When a wallet is added, the storage layer prepares and validates the new document, changes `schema_version` to 2, encrypts it, and atomically replaces the file. If the write fails, the prior file should remain intact according to the intended atomic-write path; filesystem and platform behavior still deserve additional cross-platform testing.
 
-Always create a backup before experimenting with new builds or storage migrations. Version 0.3.0 has no general-purpose downgrade/export migration command.
+Always create a backup before experimenting with new builds or storage migrations. The current implementation has no general-purpose downgrade/export migration command.
 
 ## Wallet secret storage
 

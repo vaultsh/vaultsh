@@ -1,8 +1,8 @@
 """Vaultsh command-line interface.
 
-The CLI provides encrypted vault management plus offline Bitcoin Mainnet
-BIP-39/BIP-84 wallet creation and recovery. It does not query blockchain data,
-sign transactions, or broadcast payments.
+The CLI provides encrypted vault management, offline Bitcoin Mainnet wallet
+creation/recovery, and an explicitly authorized read-only Esplora balance lookup.
+It does not sign transactions or broadcast payments.
 """
 
 from __future__ import annotations
@@ -17,7 +17,10 @@ from rich.table import Table
 
 from vaultsh import __version__
 from vaultsh.config import AppConfig, ConfigError, load_config
+from vaultsh.networks.base import NetworkError
+from vaultsh.networks.bitcoin.client import BitcoinEsploraClient, format_btc
 from vaultsh.networks.bitcoin.wallet import generate_mnemonic
+from vaultsh.privacy.network_policy import NetworkAccessDenied, require_network_access
 from vaultsh.storage.backup import create_backup, restore_backup
 from vaultsh.storage.vault_document import (
     MIN_VAULT_PASSWORD_LENGTH,
@@ -45,6 +48,12 @@ wallet_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(wallet_app, name="wallet")
+bitcoin_app = typer.Typer(
+    name="bitcoin",
+    help="Read-only Bitcoin Mainnet queries using an explicitly selected Esplora endpoint.",
+    no_args_is_help=True,
+)
+app.add_typer(bitcoin_app, name="bitcoin")
 console = Console()
 
 
@@ -63,6 +72,7 @@ def main(ctx: typer.Context) -> None:
     table.add_row("[bold cyan]wallet create[/]  Create a Bitcoin Mainnet wallet")
     table.add_row("[bold cyan]wallet recover[/] Recover a wallet from a BIP-39 phrase")
     table.add_row("[bold cyan]wallet list[/]    List public wallet details in a vault")
+    table.add_row("[bold cyan]bitcoin balance[/] Read address balance via explicit Esplora API")
     table.add_row("[bold cyan]networks[/]       Supported and planned adapters")
     table.add_row("[bold cyan]privacy[/]        Privacy defaults")
     table.add_row("[bold cyan]config[/]         Default non-secret configuration")
@@ -75,9 +85,9 @@ def main(ctx: typer.Context) -> None:
         )
     )
     console.print(
-        "[yellow]PRE-ALPHA:[/] Offline Bitcoin Mainnet address derivation is available. "
-        "Balance lookup, transaction signing and broadcasting are not implemented; "
-        "do not use this build for real funds."
+        "[yellow]PRE-ALPHA:[/] Offline Bitcoin wallet derivation and explicitly authorized "
+        "read-only balance lookup are available. Transaction signing and broadcasting are "
+        "not implemented; do not use this build for real funds."
     )
     console.print("Run [cyan]vaultsh --help[/] to see commands.")
 
@@ -90,9 +100,12 @@ def about() -> None:
             "Vaultsh is a Python-first, privacy-focused multi-chain wallet project.",
             "Implemented: encrypted vaults and backups, Bitcoin Mainnet BIP-39 phrase "
             "generation/recovery, first BIP-84 Native SegWit receiving-address derivation, "
-            "and encrypted wallet-record storage.",
-            "Not implemented: blockchain/network queries, balance retrieval, address-gap "
-            "discovery, transaction construction/signing/broadcasting, Ethereum, or Monero.",
+            "and encrypted wallet-record storage. A read-only balance lookup is available "
+            "through a user-selected Esplora-compatible endpoint when networking is explicitly "
+            "enabled.",
+            "Not implemented: address-gap discovery, transaction construction/signing/"
+            "broadcasting, Ethereum, or Monero. The balance lookup sends the address to the "
+            "chosen endpoint.",
             "This pre-alpha build is not suitable for real funds.",
         ]
     )
@@ -105,7 +118,10 @@ def networks() -> None:
     table = Table(title="Network adapter roadmap")
     table.add_column("Network", style="cyan")
     table.add_column("Status")
-    table.add_row("Bitcoin Mainnet", "BIP-39 + BIP-84 first receive address; offline only")
+    table.add_row(
+        "Bitcoin Mainnet",
+        "BIP-39/BIP-84 offline; read-only Esplora balance lookup (explicit opt-in)",
+    )
     table.add_row("Ethereum / EVM", "Planned — not implemented")
     table.add_row("Monero", "Planned — not implemented")
     console.print(table)
@@ -125,9 +141,12 @@ def privacy() -> None:
     table.add_row("Tor", "Disabled")
     console.print(table)
     console.print(
-        "[yellow]Note:[/] Wallet creation and recovery are local/offline. Vaultsh does not "
-        "guarantee anonymity; public-chain activity can be traceable. Tor is not a transport "
-        "in this release."
+        "[yellow]Note:[/] Vaultsh does not guarantee anonymity. Wallet creation/recovery are "
+        "local/offline. The optional Bitcoin balance command contacts only the endpoint "
+        "explicitly supplied by the user, and only after both configuration and command-line "
+        "opt-in. The endpoint can associate an address with connection metadata. Tor transport "
+        "is not implemented; this command refuses to "
+        "connect if tor_enabled is true rather than implying traffic is protected by Tor."
     )
 
 
@@ -406,6 +425,79 @@ def wallet_recovery_phrase(
         subtitle="Never share this phrase or store it in screenshots/cloud notes",
         border_style="red",
     ))
+
+
+@bitcoin_app.command("balance")
+def bitcoin_balance(
+    address: str = typer.Argument(..., help="Bitcoin Mainnet address to query."),
+    endpoint: str = typer.Option(
+        ...,
+        "--endpoint",
+        help="Explicit Esplora API base URL; no public provider is selected by default.",
+    ),
+    config_path: Path = typer.Option(
+        ...,
+        "--config",
+        help=r"TOML config with \[app].network_requests_enabled = true.",
+    ),
+    allow_network: bool = typer.Option(
+        False,
+        "--allow-network",
+        help="Explicitly authorize this address lookup and its network metadata exposure.",
+    ),
+) -> None:
+    """Fetch read-only address statistics from a user-selected Esplora endpoint."""
+    try:
+        settings = load_config(config_path)
+        require_network_access(
+            explicitly_requested=allow_network,
+            configured=settings.network_requests_enabled,
+        )
+        if settings.tor_enabled:
+            raise NetworkAccessDenied(
+                "Tor is enabled in config, but Tor transport is not implemented. "
+                "No direct connection was made. Disable tor_enabled or wait for a "
+                "supported transport."
+            )
+        client = BitcoinEsploraClient(
+            endpoint,
+            timeout_seconds=settings.request_timeout_seconds,
+        )
+    except (ConfigError, OSError, NetworkAccessDenied, NetworkError, ValueError) as exc:
+        console.print(f"[red]Bitcoin balance lookup failed:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        "[yellow]Privacy notice:[/] If the address is valid, this query sends it and connection "
+        "metadata to the endpoint you specified. Vaultsh does not route this request through Tor."
+    )
+    try:
+        balance = client.get_address_balance(address)
+    except NetworkError as exc:
+        console.print(f"[red]Bitcoin balance lookup failed:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+    table = Table(title="Bitcoin Mainnet address balance", show_header=True)
+    table.add_column("Measure", style="cyan")
+    table.add_column("BTC", justify="right")
+    table.add_column("Satoshis", justify="right")
+    table.add_row("Confirmed", format_btc(balance.confirmed_sats), str(balance.confirmed_sats))
+    table.add_row(
+        "Net unconfirmed change",
+        format_btc(balance.unconfirmed_sats),
+        str(balance.unconfirmed_sats),
+    )
+    table.add_row(
+        "Estimated total",
+        format_btc(balance.estimated_total_sats),
+        str(balance.estimated_total_sats),
+    )
+    console.print(table)
+    console.print(f"Address: {escape(balance.address)}")
+    console.print(f"Source: {escape(endpoint)}")
+    console.print(
+        "[dim]Read-only third-party/node data; it is not a transaction capability or a "
+        "proof of ownership.[/]"
+    )
 
 
 @app.command()

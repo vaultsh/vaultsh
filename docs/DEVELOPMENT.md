@@ -75,7 +75,8 @@ A local test run does not replace CI on each supported platform. Windows, Linux,
 - `test_wallet_store.py`: record persistence, duplicate rejection, and secret redaction from public summaries.
 - `test_bitcoin_wallet.py`: BIP-39 validity and authoritative BIP-84 derivation test vectors.
 - `test_derivation.py`: parsing only; this module does not derive private keys.
-- `test_network_policy.py` and `test_tor.py`: policy decisions and proxy-setting validation; they do not prove live networking or anonymity.
+- `test_bitcoin_client.py` and `test_bitcoin_cli.py`: mocked Esplora responses, URL/response validation, balance arithmetic, explicit network opt-in, and CLI output; they do not contact a live endpoint.
+- `test_network_policy.py` and `test_tor.py`: policy decisions and proxy-setting validation; they do not prove live Tor networking or anonymity.
 
 ## Safe change principles
 

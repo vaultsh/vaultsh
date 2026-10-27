@@ -1,4 +1,4 @@
-"""Explicit, privacy-preserving policy helpers for future network clients."""
+"""Explicit, privacy-preserving permission gate for network requests."""
 
 
 class NetworkAccessDenied(PermissionError):

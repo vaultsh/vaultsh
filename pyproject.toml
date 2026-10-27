@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vaultsh"
-version = "0.3.0"
-description = "A privacy-focused terminal wallet foundation with offline Bitcoin address derivation and encrypted vaults."
+version = "0.4.5"
+description = "A privacy-focused terminal wallet with encrypted vaults, offline Bitcoin derivation, and opt-in read-only balance lookup."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "GPL-3.0-only"
